@@ -51,6 +51,10 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         end
         union!(installed_set, st.installed_names)
 
+        # Column positions: Name | Version | Status
+        ver_x = results_inner.x + 24
+        status_x = ver_x + 10
+
         for i in 1:visible
             idx = i + st.scroll_offset
             idx > length(st.results) && break
@@ -59,13 +63,17 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             is_selected = (idx == st.selected)
             is_installing = (st.installing_name == pkg.name)
             is_installed = (pkg.name in installed_set)
+            is_failed = (pkg.name in st.failed_names)
 
             if is_selected
                 set_string!(buf, results_inner.x, y, "▶", tstyle(:accent))
             end
 
+            # Name column
             name_style = if is_installed
                 tstyle(:success, bold=is_selected)
+            elseif is_failed
+                tstyle(:error, bold=is_selected)
             elseif is_selected
                 tstyle(:accent, bold=true)
             else
@@ -73,22 +81,22 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             end
             set_string!(buf, results_inner.x + 2, y, pkg.name, name_style)
 
-            # Status column: installing progress or installed badge
-            status_x = results_inner.x + max(25, div(results_inner.width, 2))
-            status_w = results_inner.x + results_inner.width - status_x - 1
+            # Version column (always shown)
+            if pkg.latest_version !== nothing
+                set_string!(buf, ver_x, y, "v" * pkg.latest_version,
+                    is_selected ? tstyle(:accent) : tstyle(:text_dim))
+            end
+
+            # Status column
             if is_installing
-                # Show "Installing" + animated spinner
                 spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
                 frame = mod(m.tick ÷ 4, length(spinner_chars)) + 1
-                label = "$(spinner_chars[frame]) Installing…"
-                set_string!(buf, status_x, y, label, tstyle(:warning, bold=true))
+                set_string!(buf, status_x, y, "$(spinner_chars[frame]) Installing…",
+                    tstyle(:warning, bold=true))
             elseif is_installed
                 set_string!(buf, status_x, y, "Installed ✓", tstyle(:success))
-            elseif pkg.latest_version !== nothing
-                if status_x + 10 <= results_inner.x + results_inner.width
-                    set_string!(buf, status_x, y, "v" * pkg.latest_version,
-                        is_selected ? tstyle(:accent) : tstyle(:text_dim))
-                end
+            elseif is_failed
+                set_string!(buf, status_x, y, "Failed ✗", tstyle(:error))
             end
         end
     end

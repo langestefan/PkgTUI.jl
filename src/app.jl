@@ -200,18 +200,31 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         result = evt.value
         msg = result isa NamedTuple ? result.result : string(result)
         is_error = startswith(msg, "Error")
-        push_log!(m, msg)
-        if result isa NamedTuple && !isempty(result.log)
-            for line in split(result.log, '\n')
-                !isempty(strip(line)) && push_log!(m, "  " * line)
+        pkg_name = result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
+
+        # Log: first line of error only, full message to status bar
+        if is_error
+            # Extract short summary (first line, truncated)
+            first_line = first(split(msg, '\n'))
+            short = length(first_line) > 80 ? first_line[1:77] * "..." : first_line
+            push_log!(m, short)
+        else
+            push_log!(m, msg)
+        end
+
+        # Track installed/failed package name and clear installing state
+        if pkg_name !== nothing
+            if is_error
+                push!(m.registry.failed_names, pkg_name)
+            else
+                delete!(m.registry.failed_names, pkg_name)  # clear any previous failure
+                push!(m.registry.installed_names, pkg_name)
             end
         end
-        # Track installed package name and clear installing state
-        if !is_error && result isa NamedTuple && hasproperty(result, :name)
-            push!(m.registry.installed_names, result.name)
-        end
         m.registry.installing_name = nothing
-        set_status!(m, msg, is_error ? :error : :success)
+        # Status bar: truncate long error messages
+        status_msg = length(msg) > 100 ? msg[1:97] * "..." : msg
+        set_status!(m, status_msg, is_error ? :error : :success)
         refresh_all!(m)
 
     elseif evt.id == :remove
@@ -399,8 +412,8 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """Push a message to the log pane."""
-function push_log!(m::PkgTUIApp, msg::String)
-    push_line!(m.log_pane, msg)
+function push_log!(m::PkgTUIApp, msg::AbstractString)
+    push_line!(m.log_pane, String(msg))
 end
 
 """Set the status bar message with a style."""
@@ -411,9 +424,10 @@ end
 
 """Handle an error from a background task."""
 function handle_task_error!(m::PkgTUIApp, id::Symbol, err::Exception)
-    msg = "Error in $id: $(sprint(showerror, err))"
-    push_log!(m, msg)
-    set_status!(m, "Error: $(sprint(showerror, err))", :error)
+    full_msg = "Error in $id: $(sprint(showerror, err))"
+    short_msg = length(full_msg) > 80 ? full_msg[1:77] * "..." : full_msg
+    push_log!(m, short_msg)
+    set_status!(m, short_msg, :error)
 
     # Reset loading states
     if id == :fetch_installed

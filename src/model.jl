@@ -128,6 +128,7 @@ end
     detail_panel_focused::Bool = false
     installing_name::Union{String, Nothing} = nothing  # name of package currently being installed
     installed_names::Set{String} = Set{String}()        # packages installed this session
+    failed_names::Set{String} = Set{String}()            # packages that failed to install
 end
 
 """State for the Dependencies tab."""
