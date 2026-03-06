@@ -72,30 +72,31 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
     push!(lines, "")
 
     # ── Condensed Summary (most likely cause) ──
-    push!(lines, "  ╔══ Summary ══════════════════════════════════════╗")
+    box_header = "  ╔══ Summary ══════════════════════════════════════╗"
+    box_inner_w = length(box_header) - 5  # subtract "  ║  " prefix (content starts at col 6)
+    push!(lines, box_header)
     summary = extract_error_summary(tr.error_message, tr.pkg_log, tr.package_name)
     for s in summary
-        push!(lines, "  ║  " * s)
+        # Truncate long lines to fit inside the summary box
+        display_s = length(s) > box_inner_w ? s[1:prevind(s, box_inner_w)] * "…" : s
+        push!(lines, "  ║  " * display_s)
     end
     push!(lines, "  ╚═══════════════════════════════════════════════════╝")
     push!(lines, "")
 
-    # ── Error details ──
-    push!(lines, "  Error Details")
-    push!(lines, "  " * "─"^40)
-    push!(lines, "")
-
-    # Strip the "Error in add: " prefix for cleaner display
+    # ── Error details (collapsible) ──
+    # Combine error message + pkg log into one collapsible section
     error_text = tr.error_message
     if startswith(error_text, "Error in add: ")
         error_text = error_text[length("Error in add: ")+1:end]
     end
 
-    # Word-wrap error lines for readability
+    # Collect all detail lines (error message + pkg log)
+    detail_lines = String[]
     for raw_line in split(error_text, '\n')
         line = String(raw_line)
         if length(line) <= 80
-            push!(lines, "  " * line)
+            push!(detail_lines, line)
         else
             remaining = line
             while length(remaining) > 80
@@ -103,28 +104,31 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
                 if idx === nothing
                     idx = 80
                 end
-                push!(lines, "  " * remaining[1:idx])
+                push!(detail_lines, remaining[1:idx])
                 remaining = remaining[idx+1:end]
             end
-            !isempty(remaining) && push!(lines, "  " * remaining)
+            !isempty(remaining) && push!(detail_lines, remaining)
+        end
+    end
+    if !isempty(strip(tr.pkg_log))
+        push!(detail_lines, "")
+        for raw_line in split(tr.pkg_log, '\n')
+            line = String(raw_line)
+            !isempty(strip(line)) && push!(detail_lines, line)
         end
     end
 
-    # ── Pkg log output (collapsible) ──
-    if !isempty(strip(tr.pkg_log))
+    push!(lines, "")
+    if tr.pkg_output_expanded
+        push!(lines, "  Error Details  [o] collapse ▴")
+        push!(lines, "  " * "─"^40)
         push!(lines, "")
-        if tr.pkg_output_expanded
-            push!(lines, "  Pkg Output  [o] collapse ▴")
-            push!(lines, "  " * "─"^40)
-            for raw_line in split(tr.pkg_log, '\n')
-                line = String(raw_line)
-                !isempty(strip(line)) && push!(lines, "  " * line)
-            end
-        else
-            n_lines = count(!isempty ∘ strip, split(tr.pkg_log, '\n'))
-            push!(lines, "  Pkg Output  [o] expand ▾  ($(n_lines) lines hidden)")
-            push!(lines, "  " * "─"^40)
+        for dl in detail_lines
+            push!(lines, "  " * dl)
         end
+    else
+        push!(lines, "  Error Details  [o] expand ▾  ($(length(detail_lines)) lines hidden)")
+        push!(lines, "  " * "─"^40)
     end
 
     # ── Diagnostics ──

@@ -119,7 +119,7 @@ function render_toasts(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     footer = ""
     if !isempty(toast.hint)
-        footer = toast.hint * "  ·  "
+        footer = toast.hint * "  "
     end
     footer *= "[Esc] close"
 
