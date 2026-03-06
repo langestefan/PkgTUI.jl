@@ -133,6 +133,14 @@ function render_toasts(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     toast_rect = center(area, toast_w, toast_h)
 
+    # Clear the background behind the toast so underlying text doesn't bleed through
+    bg_style = tstyle(:text)  # use default background
+    for cy in toast_rect.y:(toast_rect.y + toast_rect.height - 1)
+        for cx in toast_rect.x:(toast_rect.x + toast_rect.width - 1)
+            set_char!(buf, cx, cy, ' ', bg_style)
+        end
+    end
+
     border_style = tstyle(toast.style, bold = true)
     inner = render(
         Block(border_style = border_style, box = BOX_DOUBLE),

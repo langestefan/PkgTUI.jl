@@ -102,11 +102,24 @@ end
 Handle keyboard events. Modal/overlay gets priority, then tab-specific handlers.
 """
 function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
-    # ── Toast dismiss (highest priority — Esc closes the topmost toast) ──
+    # ── Toast handling (highest priority — blocks all other input) ──
     if !isempty(m.toasts)
+        toast = last(m.toasts)
         if evt.key == :escape || evt.key == :enter
             dismiss_toast!(m)
             return
+        end
+        # Allow hint action keys (e.g. [f] free, [t] triage, [l] log)
+        if evt.key == :char
+            c = evt.char
+            if occursin("[$(c)]", toast.hint)
+                dismiss_toast!(m)  # close toast before executing action
+                # Fall through to normal key handling so the action runs
+            else
+                return  # block all other keys
+            end
+        else
+            return  # block non-char keys (arrows, etc.)
         end
     end
 
