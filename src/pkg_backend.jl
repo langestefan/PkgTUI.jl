@@ -350,22 +350,29 @@ in parallel via `asyncmap` for speed.
 function _measure_load_times(names::Vector{String}, proj_dir::AbstractString)::Vector{Tuple{String,Float64}}
     # Each subprocess measures a single package in isolation.
     # Use a unique marker prefix so we can filter out noisy Pkg/CondaPkg output.
+    # Use -1.0 as sentinel for packages that fail to load (to distinguish from
+    # "not measured" which stays at the default 0.0).
     script = raw"""
     try
         sym = Symbol(ARGS[1])
         t = @elapsed Base.require(Main, sym)
         println("__PKGTUI_TIMING__\t", ARGS[1], "\t", t)
     catch e
-        println("__PKGTUI_TIMING__\t", ARGS[1], "\t", 0.0)
+        println("__PKGTUI_TIMING__\t", ARGS[1], "\t", -1.0)
     end
     """
 
     julia_cmd = Base.julia_cmd()
 
     # Launch one subprocess per package, up to 8 concurrently.
+    # CRITICAL: redirect stderr to devnull — without this, subprocess stderr
+    # (CondaPkg messages, precompilation output, deprecation warnings) fills
+    # the pipe buffer (~64KB) and the subprocess deadlocks.  The parent only
+    # reads stdout via `read(cmd, String)`, so stderr is never drained.
     results = asyncmap(names; ntasks = min(8, length(names))) do name
         try
-            cmd = `$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`
+            raw_cmd = `$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`
+            cmd = pipeline(raw_cmd; stderr=devnull)
             output = read(cmd, String)
             # Find our marker line in the (possibly noisy) output
             for raw_line in split(output, '\n')
@@ -379,7 +386,7 @@ function _measure_load_times(names::Vector{String}, proj_dir::AbstractString)::V
                 end
             end
         catch
-            # Subprocess failed for this package — skip
+            # Subprocess crashed (OOM, segfault, etc.) — skip
         end
         return nothing
     end

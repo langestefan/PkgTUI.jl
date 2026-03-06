@@ -392,11 +392,16 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         m.metrics.profiling = false
         m.metrics.profile_progress = 1.0
         timed_count = count(t -> t[2] > 0.0, timings)
+        err_count = count(t -> t[2] < 0.0, timings)
         if isempty(timings)
             push_log!(m, "No timing data could be collected.")
             set_status!(m, "Profiling complete (no timing data)", :warning)
         else
-            push_log!(m, "Profiling complete. $(length(timings)) packages measured, $(timed_count) with load times > 0.")
+            msg = "Profiling complete. $(timed_count)/$(length(timings)) packages timed."
+            if err_count > 0
+                msg *= " ($err_count could not load in isolation)"
+            end
+            push_log!(m, msg)
             set_status!(m, "Profiling complete", :success)
         end
 

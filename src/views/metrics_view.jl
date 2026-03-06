@@ -119,7 +119,8 @@ function render_metrics_chart(st::MetricsState, area::Rect, buf::Buffer)
     entries = if st.view_mode == :size
         [BarEntry(m.name, Float64(m.disk_size_bytes) / 1024.0) for m in top_n]
     else
-        [BarEntry(m.name, m.compile_time_seconds * 1000.0) for m in top_n]
+        # Clamp to 0 so errored packages (-1.0) don't produce negative bars
+        [BarEntry(m.name, max(0.0, m.compile_time_seconds * 1000.0)) for m in top_n]
     end
 
     render(BarChart(entries; block = Block()), inner, buf)
@@ -335,11 +336,15 @@ end
 
 """Format seconds as milliseconds string."""
 function format_time(seconds::Float64)::String
-    if seconds == 0.0
-        return "—"
+    if seconds < 0.0
+        return "err"       # package failed to load in isolation
+    elseif seconds == 0.0
+        return "—"          # not measured
     else
         ms = seconds * 1000.0
-        if ms < 10.0
+        if ms < 1.0
+            return "< 1 ms"
+        elseif ms < 10.0
             return "$(round(ms; digits=2)) ms"
         elseif ms < 100.0
             return "$(round(ms; digits=1)) ms"
