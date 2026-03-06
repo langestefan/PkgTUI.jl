@@ -119,8 +119,12 @@ end
 Add a package by name. Returns a status message.
 """
 function add_package(name::String, io::IOBuffer)::String
-    Pkg.add(name; io=io)
-    return "Package '$name' added successfully."
+    try
+        Pkg.add(name; io=io)
+        return "Package '$name' added successfully."
+    catch e
+        return "Error in add: $(sprint(showerror, e))"
+    end
 end
 
 """

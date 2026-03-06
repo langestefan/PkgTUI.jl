@@ -199,6 +199,7 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
     elseif evt.id == :add
         result = evt.value
         msg = result isa NamedTuple ? result.result : string(result)
+        is_error = startswith(msg, "Error")
         push_log!(m, msg)
         if result isa NamedTuple && !isempty(result.log)
             for line in split(result.log, '\n')
@@ -206,11 +207,11 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             end
         end
         # Track installed package name and clear installing state
-        if result isa NamedTuple && hasproperty(result, :name)
+        if !is_error && result isa NamedTuple && hasproperty(result, :name)
             push!(m.registry.installed_names, result.name)
         end
         m.registry.installing_name = nothing
-        set_status!(m, msg, :success)
+        set_status!(m, msg, is_error ? :error : :success)
         refresh_all!(m)
 
     elseif evt.id == :remove
@@ -421,6 +422,8 @@ function handle_task_error!(m::PkgTUIApp, id::Symbol, err::Exception)
         m.updates_state.loading = false
     elseif id in (:measure_sizes, :compile_profile)
         m.metrics.profiling = false
+    elseif id == :add
+        m.registry.installing_name = nothing
     end
 end
 

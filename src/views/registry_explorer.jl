@@ -77,16 +77,11 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             status_x = results_inner.x + max(25, div(results_inner.width, 2))
             status_w = results_inner.x + results_inner.width - status_x - 1
             if is_installing
-                # Show "Installing" + progress gauge
-                label = "Installing… "
+                # Show "Installing" + animated spinner
+                spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+                frame = mod(m.tick ÷ 4, length(spinner_chars)) + 1
+                label = "$(spinner_chars[frame]) Installing…"
                 set_string!(buf, status_x, y, label, tstyle(:warning, bold=true))
-                gauge_x = status_x + length(label)
-                gauge_w = min(status_w - length(label), 12)
-                if gauge_w > 2
-                    gauge_area = Rect(gauge_x, y, gauge_w, 1)
-                    render(Gauge(-1.0; filled_style=tstyle(:accent),
-                        empty_style=tstyle(:text_dim, dim=true), tick=m.tick), gauge_area, buf)
-                end
             elseif is_installed
                 set_string!(buf, status_x, y, "Installed ✓", tstyle(:success))
             elseif pkg.latest_version !== nothing
