@@ -171,132 +171,160 @@ function _render_tree_linux_style(tv::TreeView, area::Rect, buf::Buffer)
     end
 end
 
-"""Render the graph visualization of dependencies."""
+"""Render a two-panel dependency explorer: package list + detail view."""
 function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
     st = m.deps
+    pkgs = m.installed.packages
 
-    # Legend + status
-    settled = st.graph_iterations >= 200
-    status_str = settled ? "settled" : "layouting ($(st.graph_iterations)/200)"
-    inner = render(
+    # Split into left (package list) and right (detail) panels
+    cols = split_layout(Layout(Horizontal, [Ratio(1, 3), Ratio(2, 3)]), area)
+
+    # ── Left panel: package list ──
+    left_inner = render(
         Block(
-            title = "Dependency Graph ($(length(st.graph_nodes)) nodes, $(length(st.graph_edges)) edges) [$status_str]",
+            title = "Packages ($(length(pkgs)))",
             border_style = tstyle(:border),
         ),
-        area,
+        cols[1],
         buf,
     )
 
-    if isempty(st.graph_nodes)
-        set_string!(
-            buf,
-            inner.x + 2,
-            inner.y + 1,
-            "No dependencies to graph.",
-            tstyle(:text_dim),
-        )
-        return
-    end
+    if isempty(pkgs)
+        set_string!(buf, left_inner.x + 1, left_inner.y, "No packages.", tstyle(:text_dim))
+    else
+        # Clamp selection
+        st.graph_selected = clamp(st.graph_selected, 1, length(pkgs))
+        visible_h = left_inner.height
 
-    # Run a layout iteration each frame for animation
-    if !settled
-        step_force_layout!(
-            st.graph_nodes,
-            st.graph_edges;
-            width = Float64(inner.width),
-            height = Float64(inner.height),
-        )
-        st.graph_iterations += 1
-    end
-
-    uuid_pos = Dict(n.uuid => (n.x, n.y) for n in st.graph_nodes)
-
-    # Draw edges using Bresenham line algorithm
-    for edge in st.graph_edges
-        p1 = get(uuid_pos, edge.from, nothing)
-        p2 = get(uuid_pos, edge.to, nothing)
-        (p1 === nothing || p2 === nothing) && continue
-
-        x1, y1 = round(Int, p1[1]) + inner.x, round(Int, p1[2]) + inner.y
-        x2, y2 = round(Int, p2[1]) + inner.x, round(Int, p2[2]) + inner.y
-
-        draw_line!(buf, x1, y1, x2, y2, inner, tstyle(:text_dim))
-    end
-
-    # Draw nodes on top (sorted: selected last so it renders on top)
-    sorted_nodes = sort(st.graph_nodes; by = n -> n.uuid == st.selected_node ? 1 : 0)
-    for node in sorted_nodes
-        nx = round(Int, node.x) + inner.x
-        ny = round(Int, node.y) + inner.y
-        nx = clamp(nx, inner.x, inner.x + inner.width - 1)
-        ny = clamp(ny, inner.y, inner.y + inner.height - 1)
-
-        is_selected = node.uuid == st.selected_node
-        style = if is_selected
-            tstyle(:accent, bold = true)
-        elseif node.is_direct
-            tstyle(:primary, bold = true)
-        else
-            tstyle(:text_dim)
+        # Auto-scroll
+        if st.graph_selected - 1 < st.graph_scroll
+            st.graph_scroll = st.graph_selected - 1
+        elseif st.graph_selected > st.graph_scroll + visible_h
+            st.graph_scroll = st.graph_selected - visible_h
         end
 
-        # Node marker
-        marker = is_selected ? '◉' : (node.is_direct ? '●' : '○')
-        set_char!(buf, nx, ny, marker, style)
+        for i in 1:visible_h
+            idx = st.graph_scroll + i
+            idx > length(pkgs) && break
+            pkg = pkgs[idx]
+            y = left_inner.y + i - 1
 
-        # Draw label next to node
-        label = node.name
-        label_x = nx + 2
-        max_label = inner.x + inner.width - label_x
-        if max_label > 3
-            display_label = length(label) > max_label ? label[1:max_label] : label
-            set_string!(buf, label_x, ny, display_label, style)
-        end
-    end
+            is_sel = idx == st.graph_selected
+            marker = pkg.is_direct_dep ? "● " : "○ "
+            label = marker * pkg.name
 
-    # Legend at bottom-right
-    ly = inner.y + inner.height - 2
-    lx = inner.x + inner.width - 22
-    if lx > inner.x && ly > inner.y
-        set_string!(buf, lx, ly, "● direct  ○ indirect", tstyle(:text_dim))
-    end
-end
-
-"""Draw a line between two points using Bresenham's algorithm."""
-function draw_line!(buf::Buffer, x1::Int, y1::Int, x2::Int, y2::Int, bounds::Rect, style)
-    dx = abs(x2 - x1)
-    dy = -abs(y2 - y1)
-    sx = x1 < x2 ? 1 : -1
-    sy = y1 < y2 ? 1 : -1
-    err = dx + dy
-    x, y = x1, y1
-
-    max_steps = dx - dy + 2  # prevent infinite loop
-    for _ = 1:max_steps
-        # Pick line char based on direction
-        cx = clamp(x, bounds.x, bounds.x + bounds.width - 1)
-        cy = clamp(y, bounds.y, bounds.y + bounds.height - 1)
-        if cx == x && cy == y  # only draw if within bounds
-            char = if dx > -dy * 2
-                '─'
-            elseif -dy > dx * 2
-                '│'
+            style = if is_sel
+                tstyle(:accent, bold = true)
+            elseif pkg.is_direct_dep
+                tstyle(:primary)
             else
-                (sx > 0) == (sy > 0) ? '╲' : '╱'
+                tstyle(:text_dim)
             end
-            set_char!(buf, x, y, char, style)
+
+            # Highlight bar for selected
+            if is_sel
+                for cx in left_inner.x:(left_inner.x + left_inner.width - 1)
+                    set_char!(buf, cx, y, ' ', tstyle(:accent))
+                end
+            end
+
+            set_string!(buf, left_inner.x + 1, y, label, style;
+                         max_x = left_inner.x + left_inner.width - 1)
         end
 
-        (x == x2 && y == y2) && break
-        e2 = 2 * err
-        if e2 >= dy
-            err += dy
-            x += sx
+        # Scroll indicators
+        if st.graph_scroll > 0
+            set_char!(buf, right(cols[1]) - 1, left_inner.y, '▲', tstyle(:text_dim))
         end
-        if e2 <= dx
-            err += dx
-            y += sy
+        if st.graph_scroll + visible_h < length(pkgs)
+            set_char!(buf, right(cols[1]) - 1, bottom(left_inner), '▼', tstyle(:text_dim))
         end
+    end
+
+    # ── Right panel: dependency detail for selected package ──
+    if !isempty(pkgs) && 1 <= st.graph_selected <= length(pkgs)
+        sel_pkg = pkgs[st.graph_selected]
+
+        right_inner = render(
+            Block(
+                title = "$(sel_pkg.name)" *
+                        (sel_pkg.version !== nothing ? " v$(sel_pkg.version)" : ""),
+                border_style = tstyle(:border),
+            ),
+            cols[2],
+            buf,
+        )
+
+        # Build UUID → PackageRow lookup
+        uuid_map = Dict(p.uuid => p for p in pkgs)
+
+        # ── Depends on ──
+        deps_list = [get(uuid_map, dep_uuid, nothing) for dep_uuid in sel_pkg.dependencies]
+        deps_list = filter(!isnothing, deps_list)
+        sort!(deps_list; by = p -> p.name)
+
+        # ── Used by (reverse dependencies) ──
+        used_by = [p for p in pkgs if sel_pkg.uuid in p.dependencies]
+        sort!(used_by; by = p -> p.name)
+
+        row = 0  # relative row counter
+
+        # "Depends on" header
+        set_string!(buf, right_inner.x + 1, right_inner.y + row,
+                   "Depends on ($(length(deps_list))):", tstyle(:accent, bold = true))
+        row += 1
+
+        if isempty(deps_list)
+            set_string!(buf, right_inner.x + 3, right_inner.y + row,
+                       "(none)", tstyle(:text_dim))
+            row += 1
+        else
+            for (i, dep) in enumerate(deps_list)
+                right_inner.y + row > bottom(right_inner) && break
+                connector = i == length(deps_list) ? "└── " : "├── "
+                marker = dep.is_direct_dep ? "● " : "○ "
+                ver = dep.version !== nothing ? " v$(dep.version)" : ""
+                line = connector * marker * dep.name * ver
+                style = dep.is_direct_dep ? tstyle(:primary) : tstyle(:text_dim)
+                set_string!(buf, right_inner.x + 3, right_inner.y + row, line, style;
+                           max_x = right_inner.x + right_inner.width - 1)
+                row += 1
+            end
+        end
+
+        row += 1  # blank line separator
+
+        # "Used by" header
+        if right_inner.y + row <= bottom(right_inner)
+            set_string!(buf, right_inner.x + 1, right_inner.y + row,
+                       "Used by ($(length(used_by))):", tstyle(:accent, bold = true))
+            row += 1
+
+            if isempty(used_by)
+                if right_inner.y + row <= bottom(right_inner)
+                    set_string!(buf, right_inner.x + 3, right_inner.y + row,
+                               "(none)", tstyle(:text_dim))
+                end
+            else
+                for (i, dep) in enumerate(used_by)
+                    right_inner.y + row > bottom(right_inner) && break
+                    connector = i == length(used_by) ? "└── " : "├── "
+                    marker = dep.is_direct_dep ? "● " : "○ "
+                    ver = dep.version !== nothing ? " v$(dep.version)" : ""
+                    line = connector * marker * dep.name * ver
+                    style = dep.is_direct_dep ? tstyle(:primary) : tstyle(:text_dim)
+                    set_string!(buf, right_inner.x + 3, right_inner.y + row, line, style;
+                               max_x = right_inner.x + right_inner.width - 1)
+                    row += 1
+                end
+            end
+        end
+    else
+        render(
+            Block(title = "Details", border_style = tstyle(:border)),
+            cols[2],
+            buf,
+        )
     end
 end
 
@@ -314,12 +342,6 @@ function handle_dependencies_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         c = evt.char
         if c == 'g'
             st.show_graph = !st.show_graph
-            if st.show_graph && isempty(st.graph_nodes) && !isempty(m.installed.packages)
-                nodes, edges = build_graph_layout(m.installed.packages)
-                st.graph_nodes = nodes
-                st.graph_edges = edges
-                st.graph_iterations = 0
-            end
             return true
         elseif c == 'w'
             # Find selected package name for Pkg.why
@@ -343,16 +365,10 @@ function handle_dependencies_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
     end
 
     # Graph mode navigation
-    if st.show_graph && !isempty(st.graph_nodes)
+    if st.show_graph && !isempty(m.installed.packages)
         if evt.key == :up || evt.key == :down
-            current_idx = findfirst(n -> n.uuid == st.selected_node, st.graph_nodes)
-            if current_idx === nothing
-                st.selected_node = st.graph_nodes[1].uuid
-            else
-                delta = evt.key == :up ? -1 : 1
-                new_idx = clamp(current_idx + delta, 1, length(st.graph_nodes))
-                st.selected_node = st.graph_nodes[new_idx].uuid
-            end
+            delta = evt.key == :up ? -1 : 1
+            st.graph_selected = clamp(st.graph_selected + delta, 1, length(m.installed.packages))
             return true
         end
     end
@@ -362,9 +378,9 @@ end
 
 """Get the name of the currently selected dependency."""
 function get_selected_dep_name(st::DependenciesState, m::PkgTUIApp)::Union{String,Nothing}
-    if st.show_graph && st.selected_node !== nothing
-        idx = findfirst(n -> n.uuid == st.selected_node, st.graph_nodes)
-        return idx !== nothing ? st.graph_nodes[idx].name : nothing
+    if st.show_graph && !isempty(m.installed.packages)
+        idx = clamp(st.graph_selected, 1, length(m.installed.packages))
+        return m.installed.packages[idx].name
     end
     # Tree mode: get selected label from TreeView's flattened rows
     if st.tree_view !== nothing && st.tree_view.selected >= 1

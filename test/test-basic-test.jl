@@ -386,8 +386,6 @@ end
     using PkgTUI:
         PkgTUIApp,
         PackageRow,
-        GraphNode,
-        GraphEdge,
         build_dependency_tree,
         render_dependencies_tab
 
@@ -420,13 +418,10 @@ end
     render_dependencies_tab(m, area, buf2)
     @test true
 
-    # Graph mode
+    # Graph mode (two-panel explorer)
     m.deps.show_graph = true
-    m.deps.graph_nodes = [
-        GraphNode(name = "A", uuid = uuid_a, x = 30.0, y = 15.0, is_direct = true),
-        GraphNode(name = "B", uuid = uuid_b, x = 60.0, y = 15.0, is_direct = false),
-    ]
-    m.deps.graph_edges = [GraphEdge(from = uuid_a, to = uuid_b)]
+    m.installed.packages = packages
+    m.deps.graph_selected = 1
     buf3 = Tachikoma.Buffer(area)
     render_dependencies_tab(m, area, buf3)
     @test true
@@ -658,34 +653,34 @@ end
     @test m.updates_state.conflicts_focused == false
 end
 
-@testitem "draw_line! does not error" tags = [:view] begin
+@testitem "graph view renders with packages" tags = [:view] begin
     using Tachikoma
-    using PkgTUI: draw_line!
+    using UUIDs
+    using PkgTUI: PkgTUIApp, PackageRow, render_dependencies_tab
 
-    area = Rect(1, 1, 40, 20)
+    m = PkgTUIApp()
+    area = Rect(1, 1, 80, 20)
     buf = Tachikoma.Buffer(area)
 
-    # Horizontal-ish line
-    draw_line!(buf, 5, 5, 20, 7, area, tstyle(:text_dim))
-    @test true
+    uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
+    uuid_b = UUID("bbbbbbbb-0000-0000-0000-000000000002")
+    m.installed.packages = [
+        PackageRow(name = "PkgA", uuid = uuid_a, version = "1.0",
+                   is_direct_dep = true, dependencies = [uuid_b]),
+        PackageRow(name = "PkgB", uuid = uuid_b, version = "2.0",
+                   is_direct_dep = false),
+    ]
+    m.deps.show_graph = true
+    m.deps.graph_selected = 1
 
-    # Vertical-ish line
-    draw_line!(buf, 10, 2, 12, 15, area, tstyle(:text_dim))
-    @test true
-
-    # Diagonal line
-    draw_line!(buf, 1, 1, 10, 10, area, tstyle(:text_dim))
-    @test true
-
-    # Zero-length line
-    draw_line!(buf, 5, 5, 5, 5, area, tstyle(:text_dim))
+    render_dependencies_tab(m, area, buf)
     @test true
 end
 
 @testitem "get_selected_dep_name tree mode" tags = [:view] begin
     using Tachikoma
     using UUIDs
-    using PkgTUI: PkgTUIApp, GraphNode, get_selected_dep_name
+    using PkgTUI: PkgTUIApp, PackageRow, get_selected_dep_name
 
     m = PkgTUIApp()
 
@@ -698,11 +693,13 @@ end
     name = get_selected_dep_name(m.deps, m)
     @test name == "MyPkg"
 
-    # Graph mode
+    # Graph mode (two-panel explorer)
     uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
     m.deps.show_graph = true
-    m.deps.graph_nodes = [GraphNode(name = "GraphPkg", uuid = uuid_a, is_direct = true)]
-    m.deps.selected_node = uuid_a
+    m.installed.packages = [
+        PackageRow(name = "GraphPkg", uuid = uuid_a, is_direct_dep = true),
+    ]
+    m.deps.graph_selected = 1
 
     name = get_selected_dep_name(m.deps, m)
     @test name == "GraphPkg"

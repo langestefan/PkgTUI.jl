@@ -72,22 +72,7 @@ end
     workspace_projects::Vector{String} = String[]
 end
 
-# ── Graph layout for dependency visualization ─────────────────────────────────
-
-@kwdef mutable struct GraphNode
-    name::String
-    uuid::UUID
-    x::Float64 = 0.0
-    y::Float64 = 0.0
-    vx::Float64 = 0.0
-    vy::Float64 = 0.0
-    is_direct::Bool = false
-end
-
-@kwdef mutable struct GraphEdge
-    from::UUID
-    to::UUID
-end
+# ── Graph layout for dependency visualization (removed force-directed) ────────
 
 # ── Tab-specific state ────────────────────────────────────────────────────────
 
@@ -148,13 +133,11 @@ end
 @kwdef mutable struct DependenciesState
     tree_root::Union{TreeNode,Nothing} = nothing
     tree_view::Union{TreeView,Nothing} = nothing
-    graph_nodes::Vector{GraphNode} = GraphNode[]
-    graph_edges::Vector{GraphEdge} = GraphEdge[]
     show_graph::Bool = false
-    selected_node::Union{UUID,Nothing} = nothing
+    graph_selected::Int = 1
+    graph_scroll::Int = 0
     why_output::Union{String,Nothing} = nothing
     loading::Bool = false
-    graph_iterations::Int = 0
 end
 
 """State for the Conflicts sub-view."""
