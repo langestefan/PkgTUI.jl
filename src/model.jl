@@ -126,6 +126,8 @@ end
     index_loaded::Bool = false
     search_timer_active::Bool = false
     detail_panel_focused::Bool = false
+    installing_name::Union{String, Nothing} = nothing  # name of package currently being installed
+    installed_names::Set{String} = Set{String}()        # packages installed this session
 end
 
 """State for the Dependencies tab."""

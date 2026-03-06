@@ -44,24 +44,54 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             st.scroll_offset = max(0, st.selected - 1)
         end
 
+        # Build set of already-installed package names for quick lookup
+        installed_set = Set{String}()
+        for p in m.installed.packages
+            push!(installed_set, p.name)
+        end
+        union!(installed_set, st.installed_names)
+
         for i in 1:visible
             idx = i + st.scroll_offset
             idx > length(st.results) && break
             pkg = st.results[idx]
             y = results_inner.y + i - 1
             is_selected = (idx == st.selected)
+            is_installing = (st.installing_name == pkg.name)
+            is_installed = (pkg.name in installed_set)
 
             if is_selected
                 set_string!(buf, results_inner.x, y, "▶", tstyle(:accent))
             end
 
-            name_style = is_selected ? tstyle(:accent, bold=true) : tstyle(:primary)
+            name_style = if is_installed
+                tstyle(:success, bold=is_selected)
+            elseif is_selected
+                tstyle(:accent, bold=true)
+            else
+                tstyle(:primary)
+            end
             set_string!(buf, results_inner.x + 2, y, pkg.name, name_style)
 
-            if pkg.latest_version !== nothing
-                ver_x = results_inner.x + max(25, div(results_inner.width, 2))
-                if ver_x + 10 <= results_inner.x + results_inner.width
-                    set_string!(buf, ver_x, y, "v" * pkg.latest_version,
+            # Status column: installing progress or installed badge
+            status_x = results_inner.x + max(25, div(results_inner.width, 2))
+            status_w = results_inner.x + results_inner.width - status_x - 1
+            if is_installing
+                # Show "Installing" + progress gauge
+                label = "Installing… "
+                set_string!(buf, status_x, y, label, tstyle(:warning, bold=true))
+                gauge_x = status_x + length(label)
+                gauge_w = min(status_w - length(label), 12)
+                if gauge_w > 2
+                    gauge_area = Rect(gauge_x, y, gauge_w, 1)
+                    render(Gauge(-1.0; filled_style=tstyle(:accent),
+                        empty_style=tstyle(:text_dim, dim=true), tick=m.tick), gauge_area, buf)
+                end
+            elseif is_installed
+                set_string!(buf, status_x, y, "Installed ✓", tstyle(:success))
+            elseif pkg.latest_version !== nothing
+                if status_x + 10 <= results_inner.x + results_inner.width
+                    set_string!(buf, status_x, y, "v" * pkg.latest_version,
                         is_selected ? tstyle(:accent) : tstyle(:text_dim))
                 end
             end
@@ -204,11 +234,16 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
     elseif evt.key == :enter
         if !isempty(st.results) && st.selected >= 1 && st.selected <= length(st.results)
             pkg = st.results[st.selected]
+            # Don't re-install if already installed or currently installing
+            if st.installing_name !== nothing
+                return true
+            end
+            st.installing_name = pkg.name
             push_log!(m, "Installing $(pkg.name)...")
             spawn_task!(m.tq, :add) do
                 io = IOBuffer()
                 result = add_package(pkg.name, io)
-                (result=result, log=String(take!(io)))
+                (result=result, log=String(take!(io)), name=pkg.name)
             end
         end
         return true

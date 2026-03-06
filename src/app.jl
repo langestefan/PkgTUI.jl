@@ -205,6 +205,11 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
                 !isempty(strip(line)) && push_log!(m, "  " * line)
             end
         end
+        # Track installed package name and clear installing state
+        if result isa NamedTuple && hasproperty(result, :name)
+            push!(m.registry.installed_names, result.name)
+        end
+        m.registry.installing_name = nothing
         set_status!(m, msg, :success)
         refresh_all!(m)
 
