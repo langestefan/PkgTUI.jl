@@ -86,13 +86,13 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
     is_unsat = occursin("unsatisfiable", lowercase(combined))
 
     if is_unsat
-        # ── Version Range Bars (visual summary) ──
+        # ── Compat range lines (visual summary) ──
         pkgs = _parse_resolver_log(combined)
         if !isempty(pkgs)
-            push!(lines, [Span("  Version Ranges", tstyle(:accent, bold = true))])
+            push!(lines, [Span("  Compat Ranges", tstyle(:accent, bold = true))])
             push!(lines, [Span("  " * "─"^40, tstyle(:text_dim))])
             push!(lines, [Span("")])
-            append!(lines, _build_ver_bars(pkgs, 30))
+            append!(lines, _build_ver_bars(pkgs, 40))
         end
     end
 
@@ -195,14 +195,17 @@ end
 # Unsatisfiable requirements — parsing, version bars, and tree colorization
 # ══════════════════════════════════════════════════════════════════════════════
 
-"""Convert a version string like `"1.29.4"` to a numeric value for proportional bar placement."""
+"""Convert a version string like `"1.29.4"` to a numeric value for proportional positioning."""
 function _ver_to_num(s::AbstractString)::Float64
     parts = split(strip(s), '.')
     val = 0.0
+    # Weight: major * 10000, minor * 100, patch * 1
+    weights = (10_000.0, 100.0, 1.0)
     for (i, p) in enumerate(parts)
+        i > 3 && break
         n = tryparse(Float64, String(p))
         n === nothing && continue
-        val += n * (1_000_000.0^(1 - i))
+        val += n * weights[i]
     end
     return val
 end
@@ -249,7 +252,7 @@ function _parse_resolver_log(text::String)::Vector{_PkgVerInfo}
         isempty(line) && continue
 
         # Package header: "PkgName [uuid] log:"
-        m = match(r"([A-Za-z]\w+)\s+\[[0-9a-f]+\]\s+log:", line)
+        m = match(r"([A-Za-z]\w+)\s+\[[^\]]+\]\s+log:", line)
         if m !== nothing
             if !isempty(cur_name) && !isempty(cur_pmin)
                 push!(pkgs, _PkgVerInfo(cur_name, cur_pmin, cur_pmax, copy(cur_cs)))
@@ -277,7 +280,7 @@ function _parse_resolver_log(text::String)::Vector{_PkgVerInfo}
 
         # Conflict: "restricted by compatibility requirements with PKG [uuid] to versions: uninstalled"
         m = match(
-            r"restricted by compatibility requirements with\s+(\w[\w.]*)\s+\[[0-9a-f]+\]\s+to versions:\s*uninstalled",
+            r"restricted by compatibility requirements with\s+(\w[\w.]*)\s+\[[^\]]+\]\s+to versions:\s*uninstalled",
             line,
         )
         if m !== nothing
@@ -295,7 +298,8 @@ function _parse_resolver_log(text::String)::Vector{_PkgVerInfo}
             source = if occursin("explicit", lowercase(source_raw))
                 "explicit"
             else
-                replace(source_raw, r"\s*\[[0-9a-f]+\].*" => "")
+                # Strip UUID brackets like [abcd1234-...] and any trailing text
+                replace(source_raw, r"\s*\[[^\]]+\].*" => "")
             end
             rmin, rmax = _parse_ver_range(String(m.captures[3]))
             push!(cur_cs, _VerConstraint(source, rmin, rmax, false))
@@ -322,75 +326,121 @@ function _parse_resolver_log(text::String)::Vector{_PkgVerInfo}
     return pkgs
 end
 
-"""Build styled horizontal version range bars for all packages in the conflict."""
-function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, bar_w::Int)::Vector{Vector{Span}}
+"""
+    _build_ver_bars(pkgs, line_w) → Vector{Vector{Span}}
+
+Build a proportional line-chart of version ranges for all packages in the
+conflict.  Every range is drawn on a shared horizontal axis so that
+overlapping / non-overlapping regions are immediately visible.
+
+Each range is rendered as:
+
+    source   min├────────┤max
+
+A conflict (no valid versions) is shown as a red  ✗  marker.
+"""
+function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{Span}}
     lines = Vector{Span}[]
     label_w = 13
 
+    # ── Compute a single global axis across ALL packages & constraints ──
+    global_min = Inf
+    global_max = -Inf
     for pkg in pkgs
-        pmin_n = _ver_to_num(pkg.possible_min)
-        pmax_n = _ver_to_num(pkg.possible_max)
-        range_total = pmax_n - pmin_n
+        pmin = _ver_to_num(pkg.possible_min)
+        pmax = _ver_to_num(pkg.possible_max)
+        global_min = min(global_min, pmin)
+        global_max = max(global_max, pmax)
+        for c in pkg.constraints
+            c.is_conflict && continue
+            global_min = min(global_min, _ver_to_num(c.ver_min))
+            global_max = max(global_max, _ver_to_num(c.ver_max))
+        end
+    end
+    axis_range = global_max - global_min
+    axis_range = axis_range > 0 ? axis_range : 1.0
 
+    # Helper: version number → column position (0-based, in [0, line_w-1])
+    to_col(v::Float64) = clamp(round(Int, (v - global_min) / axis_range * (line_w - 1)), 0, line_w - 1)
+
+    for pkg in pkgs
         # Package name header
         push!(lines, [Span("    $(pkg.name)", tstyle(:accent, bold = true))])
 
-        # Available bar (full green)
-        ver_str = if pkg.possible_min == pkg.possible_max
-            pkg.possible_min
-        else
-            "$(pkg.possible_min) — $(pkg.possible_max)"
-        end
-        push!(lines, [
-            Span("    " * rpad("Available", label_w), tstyle(:text_dim)),
-            Span("█"^bar_w, tstyle(:success)),
-            Span("  $ver_str", tstyle(:success)),
-        ])
+        # Collect all ranges to draw for this package
+        range_entries = Tuple{String,String,String,Symbol,Bool}[]  # (label, vmin_str, vmax_str, style, is_conflict)
 
-        # Each constraint bar
+        # "Available" = full possible range
+        push!(range_entries, ("Available", pkg.possible_min, pkg.possible_max, :success, false))
+
         for c in pkg.constraints
-            label = rpad(c.source, label_w)
+            push!(range_entries, (c.source, c.ver_min, c.ver_max, c.is_conflict ? :error : :warning, c.is_conflict))
+        end
 
-            if c.is_conflict
+        for (label, vmin_str, vmax_str, style, is_conflict) in range_entries
+            lbl = rpad(label, label_w)
+
+            if is_conflict
+                # No valid versions — show a red ✗ at the center
                 push!(lines, [
-                    Span("    $label", tstyle(:text_dim)),
-                    Span("░"^bar_w, tstyle(:error)),
-                    Span("  ✗ conflict", tstyle(:error)),
+                    Span("    $lbl", tstyle(:text_dim)),
+                    Span(" "^(line_w ÷ 2) * "✗  no versions", tstyle(:error)),
                 ])
-            else
-                cmin_n = _ver_to_num(c.ver_min)
-                cmax_n = _ver_to_num(c.ver_max)
-
-                if range_total > 0
-                    start_frac = clamp((cmin_n - pmin_n) / range_total, 0.0, 1.0)
-                    end_frac = clamp((cmax_n - pmin_n) / range_total, 0.0, 1.0)
-                else
-                    start_frac = 0.0
-                    end_frac = 1.0
-                end
-
-                start_pos = round(Int, start_frac * bar_w)
-                end_pos = round(Int, end_frac * bar_w)
-                end_pos = max(end_pos, start_pos + 1)
-                end_pos = min(end_pos, bar_w)
-
-                prefix_len = start_pos
-                fill_len = end_pos - start_pos
-                suffix_len = bar_w - end_pos
-
-                ver_str = if c.ver_min == c.ver_max
-                    c.ver_min
-                else
-                    "$(c.ver_min) — $(c.ver_max)"
-                end
-
-                spans = Span[Span("    $label", tstyle(:text_dim))]
-                prefix_len > 0 && push!(spans, Span("░"^prefix_len, tstyle(:text_dim)))
-                push!(spans, Span("█"^fill_len, tstyle(:warning)))
-                suffix_len > 0 && push!(spans, Span("░"^suffix_len, tstyle(:text_dim)))
-                push!(spans, Span("  $ver_str", tstyle(:warning)))
-                push!(lines, spans)
+                continue
             end
+
+            cmin = to_col(_ver_to_num(vmin_str))
+            cmax = to_col(_ver_to_num(vmax_str))
+            cmax = max(cmax, cmin)  # ensure at least zero-width
+
+            # Build the line:  spaces  min_label├───┤max_label
+            min_tag = vmin_str
+            max_tag = vmin_str == vmax_str ? "" : vmax_str
+
+            # Characters for drawing the extent line
+            buf = fill(' ', line_w)
+            if cmin == cmax
+                # Point version — single marker
+                buf[cmin+1] = '│'
+            else
+                buf[cmin+1] = '├'
+                for i in (cmin+2):cmax
+                    buf[i] = '─'
+                end
+                buf[cmax+1] = '┤'
+            end
+
+            spans = Span[Span("    $lbl", tstyle(:text_dim))]
+
+            if cmin == cmax
+                # Point or near-point version — single marker
+                pre = cmin > 0 ? " "^cmin : ""
+                push!(spans, Span(pre, tstyle(:text_dim)))
+                push!(spans, Span("│", tstyle(style)))
+                post_spaces = max(0, line_w - cmin - 1)
+                push!(spans, Span(" "^post_spaces, tstyle(:text_dim)))
+                if isempty(max_tag)
+                    push!(spans, Span("  $min_tag", tstyle(style)))
+                else
+                    push!(spans, Span("  $min_tag — $max_tag", tstyle(style)))
+                end
+            else
+                # Range: prefix spaces, ├───┤, suffix spaces, then labels
+                pre = cmin > 0 ? String(buf[1:cmin]) : ""
+                extent = String(buf[cmin+1:cmax+1])
+                post_len = max(0, line_w - cmax - 1)
+
+                push!(spans, Span(pre, tstyle(:text_dim)))
+                push!(spans, Span(extent, tstyle(style)))
+                push!(spans, Span(" "^post_len, tstyle(:text_dim)))
+                if isempty(max_tag)
+                    push!(spans, Span("  $min_tag", tstyle(style)))
+                else
+                    push!(spans, Span("  $min_tag — $max_tag", tstyle(style)))
+                end
+            end
+
+            push!(lines, spans)
         end
 
         push!(lines, [Span("")])
