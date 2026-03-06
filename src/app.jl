@@ -230,9 +230,14 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             end
         end
         m.registry.installing_name = nothing
-        # Status bar: truncate long error messages
-        status_msg = length(msg) > 100 ? msg[1:97] * "..." : msg
-        set_status!(m, status_msg, is_error ? :error : :success)
+        # Status bar: use clean message for errors
+        if is_error && pkg_name !== nothing
+            set_status!(m, "Failed to install $(pkg_name)", :error)
+        elseif is_error
+            set_status!(m, "Package install failed", :error)
+        else
+            set_status!(m, msg, :success)
+        end
         refresh_all!(m)
 
     elseif evt.id == :remove
@@ -432,8 +437,7 @@ end
 
 """Handle an error from a background task."""
 function handle_task_error!(m::PkgTUIApp, id::Symbol, err::Exception)
-    full_msg = "Error in $id: $(sprint(showerror, err))"
-    short_msg = length(full_msg) > 80 ? full_msg[1:77] * "..." : full_msg
+    short_msg = "Task $id failed"
     push_log!(m, short_msg)
     set_status!(m, short_msg, :error)
 
