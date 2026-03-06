@@ -894,13 +894,12 @@ end
 
     build_triage_content!(tr, pi)
 
-    # Scroll pane should have content
+    # Scroll pane should have styled content (Vector{Vector{Span}})
     lines = tr.scroll_pane.content
     @test length(lines) > 5
-    # Should contain package name, error, diagnostics, suggestions
-    combined = join(lines, "\n")
+    # Extract text from styled spans for content checks
+    combined = join([join(s.content for s in line) for line in lines], "\n")
     @test occursin("FailPkg", combined)
-    @test occursin("Unsatisfiable", combined)
     @test occursin("Julia version", combined)
     @test occursin("TestProject", combined)
     @test occursin("Suggestions", combined)

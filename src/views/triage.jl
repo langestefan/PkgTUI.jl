@@ -63,22 +63,40 @@ end
     build_triage_content!(tr::TriageState, project_info::ProjectInfo)
 
 Populate the triage scroll pane with error details, diagnostics, and suggestions.
+Uses styled `Vector{Vector{Span}}` content for color-coded output.
+For unsatisfiable requirements errors, adds version range bar visualization
+and color-coded dependency tree.
 """
 function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
-    lines = String[]
+    lines = Vector{Span}[]
 
     # ── Header ──
-    push!(lines, "  Package: $(tr.package_name)")
-    push!(lines, "")
+    push!(lines, [
+        Span("  Package: ", tstyle(:text_dim)),
+        Span(tr.package_name, tstyle(:accent, bold = true)),
+    ])
+    push!(lines, [Span("")])
 
-    # ── Error details (collapsible) ──
-    # Combine error message + pkg log into one collapsible section
+    # Prepare error text
     error_text = tr.error_message
     if startswith(error_text, "Error in add: ")
         error_text = error_text[length("Error in add: ")+1:end]
     end
+    combined = error_text * (isempty(strip(tr.pkg_log)) ? "" : "\n" * tr.pkg_log)
+    is_unsat = occursin("unsatisfiable", lowercase(combined))
 
-    # Collect all detail lines (error message + pkg log)
+    if is_unsat
+        # ── Version Range Bars (visual summary) ──
+        pkgs = _parse_resolver_log(combined)
+        if !isempty(pkgs)
+            push!(lines, [Span("  Version Ranges", tstyle(:accent, bold = true))])
+            push!(lines, [Span("  " * "─"^40, tstyle(:text_dim))])
+            push!(lines, [Span("")])
+            append!(lines, _build_ver_bars(pkgs, 30))
+        end
+    end
+
+    # ── Error details (collapsible) ──
     detail_lines = String[]
     for raw_line in split(error_text, '\n')
         line = String(raw_line)
@@ -87,7 +105,7 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
         else
             remaining = line
             while length(remaining) > 80
-                idx = findlast(' ', remaining[1:80])
+                idx = findlast(' ', remaining[1:min(80, length(remaining))])
                 if idx === nothing
                     idx = 80
                 end
@@ -105,47 +123,344 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
         end
     end
 
-    push!(lines, "")
+    push!(lines, [Span("")])
     if tr.pkg_output_expanded
-        push!(lines, "  Error Details  [o] collapse ▴")
-        push!(lines, "  " * "─"^40)
-        push!(lines, "")
-        for dl in detail_lines
-            push!(lines, "  " * dl)
+        push!(lines, [
+            Span("  Error Details  ", tstyle(:text)),
+            Span("[o] collapse ▴", tstyle(:success)),
+        ])
+        push!(lines, [Span("  " * "─"^40, tstyle(:text_dim))])
+        push!(lines, [Span("")])
+        if is_unsat
+            for dl in detail_lines
+                push!(lines, _colorize_tree_line("  " * dl))
+            end
+        else
+            for dl in detail_lines
+                push!(lines, [Span("  " * dl, tstyle(:text))])
+            end
         end
     else
-        push!(lines, "  Error Details  [o] expand ▾  ($(length(detail_lines)) lines hidden)")
-        push!(lines, "  " * "─"^40)
+        push!(lines, [
+            Span("  Error Details  ", tstyle(:text)),
+            Span("[o] expand ▾", tstyle(:accent)),
+            Span("  ($(length(detail_lines)) lines hidden)", tstyle(:text_dim)),
+        ])
+        push!(lines, [Span("  " * "─"^40, tstyle(:text_dim))])
     end
 
     # ── Diagnostics ──
-    push!(lines, "")
-    push!(lines, "  Diagnostics")
-    push!(lines, "  " * "─"^40)
+    push!(lines, [Span("")])
+    push!(lines, [Span("  Diagnostics", tstyle(:text, bold = true))])
+    push!(lines, [Span("  " * "─"^40, tstyle(:text_dim))])
 
     julia_ver = string(VERSION)
     env_path = something(project_info.path, "unknown")
     env_name = something(project_info.name, basename(dirname(env_path)))
 
-    push!(lines, "  Julia version:  v$(julia_ver)")
-    push!(lines, "  Environment:    $(env_name)")
-    push!(lines, "  Env path:       $(env_path)")
-    push!(lines, "  Direct deps:    $(project_info.dep_count)")
+    push!(lines, [
+        Span("  Julia version:  ", tstyle(:text_dim)),
+        Span("v$julia_ver", tstyle(:text)),
+    ])
+    push!(lines, [
+        Span("  Environment:    ", tstyle(:text_dim)),
+        Span(env_name, tstyle(:text)),
+    ])
+    push!(lines, [
+        Span("  Env path:       ", tstyle(:text_dim)),
+        Span(env_path, tstyle(:text)),
+    ])
+    push!(lines, [
+        Span("  Direct deps:    ", tstyle(:text_dim)),
+        Span("$(project_info.dep_count)", tstyle(:text)),
+    ])
 
     # ── Suggestions ──
-    push!(lines, "")
-    push!(lines, "  Suggestions")
-    push!(lines, "  " * "─"^40)
+    push!(lines, [Span("")])
+    push!(lines, [Span("  Suggestions", tstyle(:text, bold = true))])
+    push!(lines, [Span("  " * "─"^40, tstyle(:text_dim))])
 
     suggestions = analyze_error(tr.error_message, tr.package_name)
     for s in suggestions
-        push!(lines, "  • " * s)
+        push!(lines, [Span("  • ", tstyle(:text_dim)), Span(s, tstyle(:text))])
     end
 
-    push!(lines, "")
+    push!(lines, [Span("")])
 
-    # Build the scroll pane
+    # Build the scroll pane with styled content
     tr.scroll_pane = ScrollPane(lines; following = false)
+end
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Unsatisfiable requirements — parsing, version bars, and tree colorization
+# ══════════════════════════════════════════════════════════════════════════════
+
+"""Convert a version string like `"1.29.4"` to a numeric value for proportional bar placement."""
+function _ver_to_num(s::AbstractString)::Float64
+    parts = split(strip(s), '.')
+    val = 0.0
+    for (i, p) in enumerate(parts)
+        n = tryparse(Float64, String(p))
+        n === nothing && continue
+        val += n * (1_000_000.0^(1 - i))
+    end
+    return val
+end
+
+"""Parse a version range string `"X.Y.Z - A.B.C"` or `"X.Y.Z"` into `(min, max)` strings."""
+function _parse_ver_range(s::AbstractString)::Tuple{String,String}
+    s = strip(String(s))
+    m = match(r"^(.+?)\s+-\s+(.+)$", s)
+    m !== nothing && return (strip(String(m.captures[1])), strip(String(m.captures[2])))
+    return (s, s)
+end
+
+# ── Structured types for parsed resolver data ──
+
+struct _VerConstraint
+    source::String
+    ver_min::String
+    ver_max::String
+    is_conflict::Bool
+end
+
+struct _PkgVerInfo
+    name::String
+    possible_min::String
+    possible_max::String
+    constraints::Vector{_VerConstraint}
+end
+
+"""
+    _parse_resolver_log(text) → Vector{_PkgVerInfo}
+
+Parse the Pkg resolver "Unsatisfiable requirements" output into structured
+version info for each package in the conflict chain.
+"""
+function _parse_resolver_log(text::String)::Vector{_PkgVerInfo}
+    pkgs = _PkgVerInfo[]
+    cur_name = ""
+    cur_pmin = ""
+    cur_pmax = ""
+    cur_cs = _VerConstraint[]
+
+    for raw_line in split(text, '\n')
+        line = strip(String(raw_line))
+        isempty(line) && continue
+
+        # Package header: "PkgName [uuid] log:"
+        m = match(r"([A-Za-z]\w+)\s+\[[0-9a-f]+\]\s+log:", line)
+        if m !== nothing
+            if !isempty(cur_name) && !isempty(cur_pmin)
+                push!(pkgs, _PkgVerInfo(cur_name, cur_pmin, cur_pmax, copy(cur_cs)))
+            end
+            cur_name = String(m.captures[1])
+            cur_pmin = cur_pmax = ""
+            cur_cs = _VerConstraint[]
+            continue
+        end
+
+        # Possible versions: "possible versions are: X - Y or uninstalled"
+        m = match(r"possible versions are:\s*(.+?)\s+or\s+uninstalled", line)
+        if m !== nothing
+            cur_pmin, cur_pmax = _parse_ver_range(String(m.captures[1]))
+            continue
+        end
+
+        # Fixed: "PkgName [uuid] is fixed to version X.Y.Z"
+        m = match(r"is fixed to version\s+(\S+)", line)
+        if m !== nothing
+            v = String(m.captures[1])
+            push!(cur_cs, _VerConstraint("fixed", v, v, false))
+            continue
+        end
+
+        # Conflict: "restricted by compatibility requirements with PKG [uuid] to versions: uninstalled"
+        m = match(
+            r"restricted by compatibility requirements with\s+(\w[\w.]*)\s+\[[0-9a-f]+\]\s+to versions:\s*uninstalled",
+            line,
+        )
+        if m !== nothing
+            push!(cur_cs, _VerConstraint(String(m.captures[1]), "", "", true))
+            continue
+        end
+
+        # Restricted with remaining: "restricted to versions X by SOURCE, leaving only versions: Y"
+        m = match(
+            r"restricted to versions\s+(.+?)\s+by\s+(.+?),\s*leaving only versions:\s*(.+)",
+            line,
+        )
+        if m !== nothing
+            source_raw = String(m.captures[2])
+            source = if occursin("explicit", lowercase(source_raw))
+                "explicit"
+            else
+                replace(source_raw, r"\s*\[[0-9a-f]+\].*" => "")
+            end
+            rmin, rmax = _parse_ver_range(String(m.captures[3]))
+            push!(cur_cs, _VerConstraint(source, rmin, rmax, false))
+            continue
+        end
+
+        # Restricted by explicit without "leaving" clause
+        m = match(
+            r"restricted to versions\s+(.+?)\s+by\s+an\s+explicit\s+requirement",
+            line,
+        )
+        if m !== nothing && !any(c -> c.source == "explicit", cur_cs)
+            rmin, rmax = _parse_ver_range(String(m.captures[1]))
+            push!(cur_cs, _VerConstraint("explicit", rmin, rmax, false))
+            continue
+        end
+    end
+
+    # Save last package
+    if !isempty(cur_name) && !isempty(cur_pmin)
+        push!(pkgs, _PkgVerInfo(cur_name, cur_pmin, cur_pmax, copy(cur_cs)))
+    end
+
+    return pkgs
+end
+
+"""Build styled horizontal version range bars for all packages in the conflict."""
+function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, bar_w::Int)::Vector{Vector{Span}}
+    lines = Vector{Span}[]
+    label_w = 13
+
+    for pkg in pkgs
+        pmin_n = _ver_to_num(pkg.possible_min)
+        pmax_n = _ver_to_num(pkg.possible_max)
+        range_total = pmax_n - pmin_n
+
+        # Package name header
+        push!(lines, [Span("    $(pkg.name)", tstyle(:accent, bold = true))])
+
+        # Available bar (full green)
+        ver_str = if pkg.possible_min == pkg.possible_max
+            pkg.possible_min
+        else
+            "$(pkg.possible_min) — $(pkg.possible_max)"
+        end
+        push!(lines, [
+            Span("    " * rpad("Available", label_w), tstyle(:text_dim)),
+            Span("█"^bar_w, tstyle(:success)),
+            Span("  $ver_str", tstyle(:success)),
+        ])
+
+        # Each constraint bar
+        for c in pkg.constraints
+            label = rpad(c.source, label_w)
+
+            if c.is_conflict
+                push!(lines, [
+                    Span("    $label", tstyle(:text_dim)),
+                    Span("░"^bar_w, tstyle(:error)),
+                    Span("  ✗ conflict", tstyle(:error)),
+                ])
+            else
+                cmin_n = _ver_to_num(c.ver_min)
+                cmax_n = _ver_to_num(c.ver_max)
+
+                if range_total > 0
+                    start_frac = clamp((cmin_n - pmin_n) / range_total, 0.0, 1.0)
+                    end_frac = clamp((cmax_n - pmin_n) / range_total, 0.0, 1.0)
+                else
+                    start_frac = 0.0
+                    end_frac = 1.0
+                end
+
+                start_pos = round(Int, start_frac * bar_w)
+                end_pos = round(Int, end_frac * bar_w)
+                end_pos = max(end_pos, start_pos + 1)
+                end_pos = min(end_pos, bar_w)
+
+                prefix_len = start_pos
+                fill_len = end_pos - start_pos
+                suffix_len = bar_w - end_pos
+
+                ver_str = if c.ver_min == c.ver_max
+                    c.ver_min
+                else
+                    "$(c.ver_min) — $(c.ver_max)"
+                end
+
+                spans = Span[Span("    $label", tstyle(:text_dim))]
+                prefix_len > 0 && push!(spans, Span("░"^prefix_len, tstyle(:text_dim)))
+                push!(spans, Span("█"^fill_len, tstyle(:warning)))
+                suffix_len > 0 && push!(spans, Span("░"^suffix_len, tstyle(:text_dim)))
+                push!(spans, Span("  $ver_str", tstyle(:warning)))
+                push!(lines, spans)
+            end
+        end
+
+        push!(lines, [Span("")])
+    end
+
+    return lines
+end
+
+"""
+    _colorize_tree_line(raw) → Vector{Span}
+
+Color-code a single line of the Pkg resolver tree output:
+- Package names → accent (cyan)
+- Version numbers → success (green)
+- UUIDs → dim
+- Conflict markers → error (red)
+"""
+function _colorize_tree_line(raw::String)::Vector{Span}
+    isempty(strip(raw)) && return [Span("")]
+
+    # Collect tokens: (byte_offset, byte_length, style)
+    tokens = Tuple{Int,Int,Symbol}[]
+
+    # UUIDs: [xxxxxxxx]
+    for m in eachmatch(r"\[[0-9a-f]{4,}\]", raw)
+        push!(tokens, (m.offset, ncodeunits(m.match), :text_dim))
+    end
+
+    # Conflict markers
+    for m in eachmatch(r"no versions left", raw)
+        push!(tokens, (m.offset, ncodeunits(m.match), :error))
+    end
+    for m in eachmatch(r"uninstalled", raw)
+        # Only color "uninstalled" when it appears after "versions:"
+        if m.offset > 1 && occursin("versions:", raw[1:prevind(raw, m.offset)])
+            push!(tokens, (m.offset, ncodeunits(m.match), :error))
+        end
+    end
+
+    # Version numbers/ranges (not overlapping existing tokens)
+    for m in eachmatch(r"\d+\.\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+(?:\.\d+)?)?)?", raw)
+        overlaps = any(t -> m.offset >= t[1] && m.offset < t[1] + t[2], tokens)
+        !overlaps && push!(tokens, (m.offset, ncodeunits(m.match), :success))
+    end
+
+    # Package names (capitalized word before [uuid])
+    for m in eachmatch(r"[A-Z]\w+(?=\s*\[)", raw)
+        overlaps = any(t -> m.offset >= t[1] && m.offset < t[1] + t[2], tokens)
+        !overlaps && push!(tokens, (m.offset, ncodeunits(m.match), :accent))
+    end
+
+    sort!(tokens, by = first)
+
+    # Build spans from tokens with plain text in between
+    spans = Span[]
+    pos = 1
+    for (off, len, style) in tokens
+        if off > pos
+            push!(spans, Span(String(SubString(raw, pos, prevind(raw, off))), tstyle(:text)))
+        end
+        tok_end = prevind(raw, off + len)
+        push!(spans, Span(String(SubString(raw, off, tok_end)), tstyle(style)))
+        pos = off + len
+    end
+    if pos <= ncodeunits(raw)
+        push!(spans, Span(String(SubString(raw, pos)), tstyle(:text)))
+    end
+
+    isempty(spans) && return [Span(raw, tstyle(:text))]
+    return spans
 end
 
 """
