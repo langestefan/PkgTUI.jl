@@ -426,6 +426,10 @@ end
     Tachikoma.update!(m, KeyEvent('3'))
     @test m.active_tab == 3
 
+    # Switch to tab 1 so the registry search input doesn't capture keys
+    Tachikoma.update!(m, KeyEvent('1'))
+    @test m.active_tab == 1
+
     # Help toggle
     @test m.show_help == false
     Tachikoma.update!(m, KeyEvent('?'))

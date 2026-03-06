@@ -143,6 +143,15 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
             if new_tab == 2 && isempty(m.updates_state.updates) && !m.updates_state.loading
                 refresh_updates!(m)
             end
+            # Auto-focus search input when switching to Registry tab
+            if new_tab == 3
+                st = m.registry
+                st.search_input = TextInput(;
+                    label="  Search: ",
+                    text=text(st.search_input),
+                    focused=true
+                )
+            end
             return
         end
     elseif evt.key == :escape
@@ -202,12 +211,11 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         is_error = startswith(msg, "Error")
         pkg_name = result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
 
-        # Log: first line of error only, full message to status bar
-        if is_error
-            # Extract short summary (first line, truncated)
-            first_line = first(split(msg, '\n'))
-            short = length(first_line) > 80 ? first_line[1:77] * "..." : first_line
-            push_log!(m, short)
+        # Log: short message only (errors are too verbose for the log pane)
+        if is_error && pkg_name !== nothing
+            push_log!(m, "Failed to install $(pkg_name).")
+        elseif is_error
+            push_log!(m, "Package install failed.")
         else
             push_log!(m, msg)
         end

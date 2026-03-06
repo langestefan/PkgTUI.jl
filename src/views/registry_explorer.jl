@@ -215,6 +215,10 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             )
             st.selected = max(1, st.selected)
             return true
+        elseif evt.key == :char && evt.char in ('1', '2', '3', '4', '5')
+            # Let tab-switch keys pass through to global handler
+            return false
+            return true
         else
             handle_key!(st.search_input, evt)
             # Trigger search
