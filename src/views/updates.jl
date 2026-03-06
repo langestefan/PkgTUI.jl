@@ -1,0 +1,235 @@
+"""
+    Updates available tab view.
+"""
+
+"""
+    render_updates_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
+
+Render the "Updates" tab showing packages with available updates.
+"""
+function render_updates_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
+    st = m.updates_state
+
+    if st.show_dry_run && st.dry_run_output !== nothing
+        render_dry_run_panel(m, area, buf)
+        return
+    end
+
+    # Layout: table | action hints
+    rows = split_layout(Layout(Vertical, [Fill(), Fixed(1)]), area)
+
+    table_area = rows[1]
+    inner = render(Block(
+        title="Available Updates ($(length(st.updates)))",
+        border_style=tstyle(:border)
+    ), table_area, buf)
+
+    if st.loading
+        set_string!(buf, inner.x + 2, inner.y + 1,
+            "Checking for updates...", tstyle(:text_dim, italic=true))
+    elseif isempty(st.updates)
+        set_string!(buf, inner.x + 2, inner.y + 1,
+            "All packages are up to date!", tstyle(:success))
+    else
+        # Header
+        render_updates_header(inner, buf)
+
+        # Rows
+        visible = inner.height - 2
+        st.scroll_offset = clamp(st.scroll_offset, 0, max(0, length(st.updates) - visible))
+
+        if st.selected > st.scroll_offset + visible
+            st.scroll_offset = st.selected - visible
+        elseif st.selected <= st.scroll_offset
+            st.scroll_offset = max(0, st.selected - 1)
+        end
+
+        for i in 1:visible
+            idx = i + st.scroll_offset
+            idx > length(st.updates) && break
+            info = st.updates[idx]
+            y = inner.y + 1 + i
+            render_update_row(info, inner.x, y, inner.width, buf, idx == st.selected)
+        end
+    end
+
+    # Action hints
+    render(StatusBar(
+        left=[
+            Span("  [u]pdate selected ", tstyle(:accent)),
+            Span("[U]pdate all ", tstyle(:accent)),
+            Span("[d]ry-run ", tstyle(:accent)),
+            Span("[R]efresh ", tstyle(:text_dim)),
+        ],
+        right=[],
+    ), rows[2], buf)
+end
+
+"""Render updates table header."""
+function render_updates_header(area::Rect, buf::Buffer)
+    y = area.y
+    style = tstyle(:title, bold=true)
+    cx = area.x + 1
+
+    set_string!(buf, cx, y, " ", style)
+    set_string!(buf, cx + 2, y, "Package", style)
+    set_string!(buf, cx + 25, y, "Current", style)
+    set_string!(buf, cx + 38, y, "Latest", style)
+    set_string!(buf, cx + 51, y, "Blocked By", style)
+
+    for x in area.x:(area.x + area.width - 1)
+        set_char!(buf, x, y + 1, '─', tstyle(:border))
+    end
+end
+
+"""Render a single update info row."""
+function render_update_row(info::UpdateInfo, x::Int, y::Int, width::Int,
+                            buf::Buffer, selected::Bool)
+    cx = x + 1
+
+    # Status indicator
+    indicator = info.can_update ? "⌃" : "⌅"
+    ind_style = info.can_update ? tstyle(:success, bold=true) : tstyle(:warning, bold=true)
+    set_string!(buf, cx, y, indicator, selected ? tstyle(:accent, bold=true) : ind_style)
+
+    # Package name
+    name_style = selected ? tstyle(:accent, bold=true) : tstyle(:primary)
+    set_string!(buf, cx + 2, y, info.name, name_style)
+
+    # Current version
+    set_string!(buf, cx + 25, y, "v" * info.current_version,
+        selected ? tstyle(:accent) : tstyle(:text))
+
+    # Latest version
+    latest = info.latest_compatible !== nothing ? info.latest_compatible :
+             info.latest_available !== nothing ? info.latest_available : "—"
+    latest_str = latest == "—" ? latest : "v" * latest
+    set_string!(buf, cx + 38, y, latest_str,
+        selected ? tstyle(:accent) : tstyle(:success))
+
+    # Blocker
+    if info.blocker !== nothing && cx + 51 + length(info.blocker) <= x + width
+        set_string!(buf, cx + 51, y, info.blocker,
+            selected ? tstyle(:accent) : tstyle(:error))
+    end
+
+    # Selection indicator
+    if selected
+        set_string!(buf, cx - 1, y, "▶", tstyle(:accent))
+    end
+end
+
+"""Render dry-run output panel."""
+function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
+    st = m.updates_state
+    rows = split_layout(Layout(Vertical, [Fill(), Fixed(1)]), area)
+
+    inner = render(Block(
+        title="Dry Run — Update Preview",
+        border_style=tstyle(:accent),
+        box=BOX_DOUBLE,
+    ), rows[1], buf)
+
+    if st.dry_run_output !== nothing
+        lines = split(st.dry_run_output, '\n')
+        for (i, line) in enumerate(lines)
+            y = inner.y + i - 1
+            y > inner.y + inner.height - 1 && break
+            style = if occursin("⌃", line)
+                tstyle(:success)
+            elseif occursin("⌅", line)
+                tstyle(:warning)
+            else
+                tstyle(:text)
+            end
+            # Truncate long lines
+            display_line = length(line) > inner.width - 2 ?
+                line[1:inner.width-2] : line
+            set_string!(buf, inner.x + 1, y, display_line, style)
+        end
+    end
+
+    render(StatusBar(
+        left=[Span("  [Esc] Close dry-run preview", tstyle(:text_dim))],
+        right=[],
+    ), rows[2], buf)
+end
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Updates tab key handling
+# ──────────────────────────────────────────────────────────────────────────────
+
+"""
+    handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent) → Bool
+"""
+function handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
+    st = m.updates_state
+
+    # Dry-run mode: only Esc exits
+    if st.show_dry_run
+        if evt.key == :escape
+            st.show_dry_run = false
+            return true
+        end
+        return false
+    end
+
+    if evt.key == :char
+        c = evt.char
+        if c == 'u' && !isempty(st.updates)
+            idx = st.selected
+            if idx >= 1 && idx <= length(st.updates)
+                name = st.updates[idx].name
+                push_log!(m, "Updating $name...")
+                spawn_task!(m.tq, :update_single) do
+                    io = IOBuffer()
+                    result = update_package(name, io)
+                    (result=result, log=String(take!(io)))
+                end
+            end
+            return true
+        elseif c == 'U'
+            push_log!(m, "Updating all packages...")
+            spawn_task!(m.tq, :update_all) do
+                io = IOBuffer()
+                result = update_all(io)
+                (result=result, log=String(take!(io)))
+            end
+            return true
+        elseif c == 'd'
+            push_log!(m, "Running dry-run update check...")
+            spawn_task!(m.tq, :dry_run) do
+                io = IOBuffer()
+                dry_run_update(io)
+            end
+            return true
+        elseif c == 'R'
+            refresh_updates!(m)
+            return true
+        end
+    elseif evt.key == :up
+        st.selected = max(1, st.selected - 1)
+        return true
+    elseif evt.key == :down
+        st.selected = min(length(st.updates), st.selected + 1)
+        return true
+    elseif evt.key == :pageup
+        st.selected = max(1, st.selected - 10)
+        return true
+    elseif evt.key == :pagedown
+        st.selected = min(length(st.updates), st.selected + 10)
+        return true
+    end
+
+    return false
+end
+
+"""Trigger an async refresh of update information."""
+function refresh_updates!(m::PkgTUIApp)
+    m.updates_state.loading = true
+    push_log!(m, "Checking for updates...")
+    spawn_task!(m.tq, :fetch_outdated) do
+        io = IOBuffer()
+        fetch_outdated(io)
+    end
+end
