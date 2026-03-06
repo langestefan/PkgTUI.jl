@@ -133,7 +133,7 @@ end
 function render_package_table_header(area::Rect, buf::Buffer)
     y = area.y
     style = tstyle(:title, bold = true)
-    col_name = area.x + 1
+    col_name = area.x + 2
     col_ver = area.x + max(30, div(area.width, 3))
     col_type = col_ver + 14
     col_status = col_type + 10
@@ -165,7 +165,7 @@ function render_package_row(
     selected::Bool,
     update_info::Union{UpdateInfo,Nothing} = nothing,
 )
-    col_name = x + 1
+    col_name = x + 2
     col_ver = x + max(30, div(width, 3))
     col_type = col_ver + 14
     col_status = col_type + 10
@@ -179,9 +179,9 @@ function render_package_row(
         tstyle(:text_dim)
     end
 
-    # Selection indicator
+    # Selection indicator (▶ is 2 columns wide)
     if selected
-        set_string!(buf, col_name - 1, y, "▶", tstyle(:accent))
+        set_string!(buf, col_name - 2, y, "▶", tstyle(:accent))
     end
 
     set_string!(buf, col_name, y, pkg.name, name_style)

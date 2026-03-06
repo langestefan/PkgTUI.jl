@@ -44,7 +44,7 @@ function render_conflicts_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     # Header
     y = inner.y
-    hx = inner.x + 1
+    hx = inner.x + 2
     style = tstyle(:title, bold = true)
     set_string!(buf, hx, y, "Package", style)
     set_string!(buf, hx + 20, y, "Held At", style)
@@ -86,7 +86,7 @@ function render_conflicts_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
         )
 
         if is_selected
-            set_string!(buf, hx - 1, y, "▶", tstyle(:accent))
+            set_string!(buf, hx - 2, y, "▶", tstyle(:accent))
         end
         y += 1
     end
