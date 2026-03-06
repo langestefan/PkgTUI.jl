@@ -11,33 +11,47 @@ This is rendered as a sub-panel within the Updates or Dependencies tab.
 function render_conflicts_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
     st = m.conflicts
 
-    inner = render(Block(
-        title="Dependency Conflicts ($(length(st.conflicts)))",
-        border_style=tstyle(:warning),
-    ), area, buf)
+    inner = render(
+        Block(
+            title = "Dependency Conflicts ($(length(st.conflicts)))",
+            border_style = tstyle(:warning),
+        ),
+        area,
+        buf,
+    )
 
     if st.loading
-        set_string!(buf, inner.x + 2, inner.y + 1,
-            "Analyzing conflicts...", tstyle(:text_dim, italic=true))
+        set_string!(
+            buf,
+            inner.x + 2,
+            inner.y + 1,
+            "Analyzing conflicts...",
+            tstyle(:text_dim, italic = true),
+        )
         return
     end
 
     if isempty(st.conflicts)
-        set_string!(buf, inner.x + 2, inner.y + 1,
-            "No dependency conflicts detected.", tstyle(:success))
+        set_string!(
+            buf,
+            inner.x + 2,
+            inner.y + 1,
+            "No dependency conflicts detected.",
+            tstyle(:success),
+        )
         return
     end
 
     # Header
     y = inner.y
     hx = inner.x + 1
-    style = tstyle(:title, bold=true)
+    style = tstyle(:title, bold = true)
     set_string!(buf, hx, y, "Package", style)
     set_string!(buf, hx + 20, y, "Held At", style)
     set_string!(buf, hx + 32, y, "Latest", style)
     set_string!(buf, hx + 44, y, "Blocked By", style)
     y += 1
-    for x in inner.x:(inner.x + inner.width - 1)
+    for x = inner.x:(inner.x+inner.width-1)
         set_char!(buf, x, y, '─', tstyle(:border))
     end
     y += 1
@@ -47,14 +61,29 @@ function render_conflicts_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
         y > inner.y + inner.height - 1 && break
         is_selected = (i == st.selected)
 
-        name_style = is_selected ? tstyle(:accent, bold=true) : tstyle(:warning)
+        name_style = is_selected ? tstyle(:accent, bold = true) : tstyle(:warning)
         set_string!(buf, hx, y, conflict.package, name_style)
-        set_string!(buf, hx + 20, y, "v" * conflict.held_at,
-            is_selected ? tstyle(:accent) : tstyle(:text))
-        set_string!(buf, hx + 32, y, "v" * conflict.latest,
-            is_selected ? tstyle(:accent) : tstyle(:success))
-        set_string!(buf, hx + 44, y, conflict.blocked_by,
-            is_selected ? tstyle(:accent) : tstyle(:error))
+        set_string!(
+            buf,
+            hx + 20,
+            y,
+            "v" * conflict.held_at,
+            is_selected ? tstyle(:accent) : tstyle(:text),
+        )
+        set_string!(
+            buf,
+            hx + 32,
+            y,
+            "v" * conflict.latest,
+            is_selected ? tstyle(:accent) : tstyle(:success),
+        )
+        set_string!(
+            buf,
+            hx + 44,
+            y,
+            conflict.blocked_by,
+            is_selected ? tstyle(:accent) : tstyle(:error),
+        )
 
         if is_selected
             set_string!(buf, hx - 1, y, "▶", tstyle(:accent))
@@ -74,12 +103,15 @@ function extract_conflicts(updates::Vector{UpdateInfo})::Vector{ConflictInfo}
     for u in updates
         u.can_update && continue  # ⌃ packages can be updated, skip them
         latest = something(u.latest_available, u.latest_compatible, "unknown")
-        push!(conflicts, ConflictInfo(
-            package=u.name,
-            held_at=u.current_version,
-            latest=latest,
-            blocked_by=something(u.blocker, "unknown"),
-        ))
+        push!(
+            conflicts,
+            ConflictInfo(
+                package = u.name,
+                held_at = u.current_version,
+                latest = latest,
+                blocked_by = something(u.blocker, "unknown"),
+            ),
+        )
     end
     return conflicts
 end

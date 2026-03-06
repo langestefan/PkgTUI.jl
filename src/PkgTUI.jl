@@ -48,7 +48,9 @@ function (@main)(ARGS)
             println("  --help, -h         Show this help message")
             println()
             println("Keybindings:")
-            println("  1-6      Switch tabs (Installed, Updates, Registry, Dependencies, Metrics, Log)")
+            println(
+                "  1-6      Switch tabs (Installed, Updates, Registry, Dependencies, Metrics, Log)",
+            )
             println("  q/Esc    Quit")
             println("  ?        Show help overlay")
             println("  Ctrl+E   Switch environment")
@@ -60,7 +62,7 @@ function (@main)(ARGS)
             project = arg[length("-p=")+1:end]
         end
     end
-    pkgtui(; project=project)
+    pkgtui(; project = project)
     return 0
 end
 

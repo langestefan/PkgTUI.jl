@@ -19,10 +19,7 @@ function build_registry_index()::Vector{RegistryPackage}
 
     for reg in Pkg.Registry.reachable_registries()
         for (uuid, entry) in reg.pkgs
-            pkg = RegistryPackage(
-                name=entry.name,
-                uuid=uuid,
-            )
+            pkg = RegistryPackage(name = entry.name, uuid = uuid)
 
             # Load detailed info (repo, versions) lazily
             try
@@ -42,7 +39,7 @@ function build_registry_index()::Vector{RegistryPackage}
         end
     end
 
-    sort!(index; by=p -> lowercase(p.name))
+    sort!(index; by = p -> lowercase(p.name))
     return index
 end
 
@@ -53,12 +50,15 @@ end
 Search the registry index by fuzzy substring match on package name.
 Returns at most `max_results` matches, sorted by relevance.
 """
-function search_registry(index::Vector{RegistryPackage}, query::AbstractString;
-                          max_results::Int=100)::Vector{RegistryPackage}
+function search_registry(
+    index::Vector{RegistryPackage},
+    query::AbstractString;
+    max_results::Int = 100,
+)::Vector{RegistryPackage}
     isempty(query) && return first(index, min(max_results, length(index)))
 
     q = lowercase(query)
-    results = Tuple{RegistryPackage, Int}[]
+    results = Tuple{RegistryPackage,Int}[]
 
     for pkg in index
         name_lower = lowercase(pkg.name)
@@ -66,19 +66,19 @@ function search_registry(index::Vector{RegistryPackage}, query::AbstractString;
         # Exact match → highest priority
         if name_lower == q
             push!(results, (pkg, 0))
-        # Starts with query → high priority
+            # Starts with query → high priority
         elseif startswith(name_lower, q)
             push!(results, (pkg, 1))
-        # Contains query → medium priority
+            # Contains query → medium priority
         elseif occursin(q, name_lower)
             push!(results, (pkg, 2))
-        # Fuzzy: check if all query chars appear in order
+            # Fuzzy: check if all query chars appear in order
         elseif fuzzy_match(name_lower, q)
             push!(results, (pkg, 3))
         end
     end
 
-    sort!(results; by=r -> (r[2], lowercase(r[1].name)))
+    sort!(results; by = r -> (r[2], lowercase(r[1].name)))
     return [r[1] for r in first(results, max_results)]
 end
 
@@ -118,7 +118,7 @@ function fetch_package_versions(pkg_name::String)::Vector{String}
                     info = Pkg.Registry.registry_info(entry)
                     vers = info.version_info
                     if !isempty(vers)
-                        return [string(v) for v in sort(collect(keys(vers)); rev=true)]
+                        return [string(v) for v in sort(collect(keys(vers)); rev = true)]
                     end
                 catch
                 end

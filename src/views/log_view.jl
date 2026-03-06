@@ -21,7 +21,8 @@ function render_log_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     # ── Search bar ──
     if has_search
-        search_inner = render(Block(title="Search", border_style=tstyle(:accent)), rows[1], buf)
+        search_inner =
+            render(Block(title = "Search", border_style = tstyle(:accent)), rows[1], buf)
         render(ls.search_input, search_inner, buf)
     end
 
@@ -35,7 +36,7 @@ function render_log_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     # Apply search filter
     filtered_indices = if !isempty(ls.search_query)
         query_lower = lowercase(ls.search_query)
-        [i for i in 1:total if occursin(query_lower, lowercase(lines[i]))]
+        [i for i = 1:total if occursin(query_lower, lowercase(lines[i]))]
     else
         collect(1:total)
     end
@@ -47,16 +48,26 @@ function render_log_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         "Log ($(total) lines)"
     end
 
-    log_inner = render(Block(title=title, border_style=tstyle(:border)), content, buf)
+    log_inner = render(Block(title = title, border_style = tstyle(:border)), content, buf)
     visible = log_inner.height
 
     if isempty(filtered_indices)
         if !isempty(ls.search_query)
-            set_string!(buf, log_inner.x + 2, log_inner.y + 1,
-                "No log lines match '$(ls.search_query)'", tstyle(:text_dim, italic=true))
+            set_string!(
+                buf,
+                log_inner.x + 2,
+                log_inner.y + 1,
+                "No log lines match '$(ls.search_query)'",
+                tstyle(:text_dim, italic = true),
+            )
         else
-            set_string!(buf, log_inner.x + 2, log_inner.y + 1,
-                "No log entries yet.", tstyle(:text_dim, italic=true))
+            set_string!(
+                buf,
+                log_inner.x + 2,
+                log_inner.y + 1,
+                "No log entries yet.",
+                tstyle(:text_dim, italic = true),
+            )
         end
     else
         # Clamp scroll
@@ -68,7 +79,7 @@ function render_log_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             ls.scroll_offset = max_offset
         end
 
-        for i in 1:visible
+        for i = 1:visible
             idx = i + ls.scroll_offset
             idx > n_filtered && break
             line_idx = filtered_indices[idx]
@@ -87,10 +98,11 @@ function render_log_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             style = if startswith(line, "  ") && occursin("failed", lowercase(line))
                 tstyle(:error)
             elseif occursin("error", lowercase(line)) || occursin("failed", lowercase(line))
-                tstyle(:error, bold=true)
+                tstyle(:error, bold = true)
             elseif occursin("warning", lowercase(line))
                 tstyle(:warning)
-            elseif occursin("success", lowercase(line)) || occursin("complete", lowercase(line))
+            elseif occursin("success", lowercase(line)) ||
+                   occursin("complete", lowercase(line))
                 tstyle(:success)
             elseif startswith(line, "  ")
                 tstyle(:text_dim)
@@ -100,8 +112,15 @@ function render_log_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
 
             # Highlight search matches
             if !isempty(ls.search_query)
-                _render_highlighted_line!(buf, log_inner.x + gutter_width, y,
-                    display_line, ls.search_query, style, remaining_width)
+                _render_highlighted_line!(
+                    buf,
+                    log_inner.x + gutter_width,
+                    y,
+                    display_line,
+                    ls.search_query,
+                    style,
+                    remaining_width,
+                )
             else
                 set_string!(buf, log_inner.x + gutter_width, y, display_line, style)
             end
@@ -111,30 +130,49 @@ function render_log_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         if n_filtered > visible
             pct = round(Int, 100.0 * (ls.scroll_offset + visible) / n_filtered)
             pos_str = "$(min(pct, 100))%"
-            set_string!(buf, log_inner.x + log_inner.width - length(pos_str) - 1,
-                log_inner.y + log_inner.height - 1, pos_str, tstyle(:text_dim))
+            set_string!(
+                buf,
+                log_inner.x + log_inner.width - length(pos_str) - 1,
+                log_inner.y + log_inner.height - 1,
+                pos_str,
+                tstyle(:text_dim),
+            )
         end
     end
 
     # ── Hints ──
-    render(StatusBar(
-        left=[
-            Span("  ↑↓ scroll ", tstyle(:text_dim)),
-            Span("PgUp/PgDn ", tstyle(:text_dim)),
-            Span("[/]search ", tstyle(:accent)),
-            Span("[G]o bottom ", tstyle(:accent)),
-            Span("[g]o top ", tstyle(:accent)),
-            Span("[c]lear ", tstyle(:accent)),
-        ],
-        right=[
-            Span(ls.following ? "Following ● " : "Paused ○ ", ls.following ? tstyle(:success) : tstyle(:text_dim)),
-        ],
-    ), rows[end], buf)
+    render(
+        StatusBar(
+            left = [
+                Span("  ↑↓ scroll ", tstyle(:text_dim)),
+                Span("PgUp/PgDn ", tstyle(:text_dim)),
+                Span("[/]search ", tstyle(:accent)),
+                Span("[G]o bottom ", tstyle(:accent)),
+                Span("[g]o top ", tstyle(:accent)),
+                Span("[c]lear ", tstyle(:accent)),
+            ],
+            right = [
+                Span(
+                    ls.following ? "Following ● " : "Paused ○ ",
+                    ls.following ? tstyle(:success) : tstyle(:text_dim),
+                ),
+            ],
+        ),
+        rows[end],
+        buf,
+    )
 end
 
 """Render a line with search term highlighted."""
-function _render_highlighted_line!(buf::Buffer, x::Int, y::Int,
-    line::String, query::String, base_style, max_width::Int)
+function _render_highlighted_line!(
+    buf::Buffer,
+    x::Int,
+    y::Int,
+    line::String,
+    query::String,
+    base_style,
+    max_width::Int,
+)
     query_lower = lowercase(query)
     line_lower = lowercase(line)
     pos = 1
@@ -159,7 +197,7 @@ function _render_highlighted_line!(buf::Buffer, x::Int, y::Int,
             end
             # Render matched text highlighted
             match_text = line[match_start]
-            set_string!(buf, cx, y, match_text, tstyle(:accent, bold=true))
+            set_string!(buf, cx, y, match_text, tstyle(:accent, bold = true))
             cx += length(match_text)
             pos = last(match_start) + 1
         end
@@ -176,12 +214,13 @@ function handle_log_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
     if ls.search_active
         if evt.key == :escape
             ls.search_active = false
-            ls.search_input = TextInput(; label="  Search: ", focused=false)
+            ls.search_input = TextInput(; label = "  Search: ", focused = false)
             return true
         elseif evt.key == :enter
             ls.search_query = strip(text(ls.search_input))
             ls.search_active = false
-            ls.search_input = TextInput(; label="  Search: ", text=ls.search_query, focused=false)
+            ls.search_input =
+                TextInput(; label = "  Search: ", text = ls.search_query, focused = false)
             ls.scroll_offset = 0
             ls.following = false
             return true
@@ -196,7 +235,8 @@ function handle_log_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         c = evt.char
         if c == '/'
             ls.search_active = true
-            ls.search_input = TextInput(; label="  Search: ", text=ls.search_query, focused=true)
+            ls.search_input =
+                TextInput(; label = "  Search: ", text = ls.search_query, focused = true)
             return true
         elseif c == 'c'
             empty!(m.log_pane.content)

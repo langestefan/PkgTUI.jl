@@ -22,12 +22,12 @@ Return information about the currently active project/environment.
 function fetch_project_info()::ProjectInfo
     proj = Pkg.project()
     info = ProjectInfo(
-        name=proj.name,
-        uuid=proj.uuid,
-        version=proj.version === nothing ? nothing : string(proj.version),
-        is_package=proj.ispackage,
-        path=proj.path,
-        dep_count=length(proj.dependencies),
+        name = proj.name,
+        uuid = proj.uuid,
+        version = proj.version === nothing ? nothing : string(proj.version),
+        is_package = proj.ispackage,
+        path = proj.path,
+        dep_count = length(proj.dependencies),
     )
 
     # Detect workspace
@@ -91,21 +91,21 @@ function fetch_installed(io::IOBuffer)::Vector{PackageRow}
 
     for (uuid, info) in deps
         row = PackageRow(
-            name=info.name,
-            uuid=uuid,
-            version=info.version === nothing ? nothing : string(info.version),
-            is_direct_dep=info.is_direct_dep,
-            is_pinned=info.is_pinned,
-            is_tracking_path=info.is_tracking_path,
-            is_tracking_repo=info.is_tracking_repo,
-            is_tracking_registry=info.is_tracking_registry,
-            source=info.source,
-            dependencies=collect(values(info.dependencies)),
+            name = info.name,
+            uuid = uuid,
+            version = info.version === nothing ? nothing : string(info.version),
+            is_direct_dep = info.is_direct_dep,
+            is_pinned = info.is_pinned,
+            is_tracking_path = info.is_tracking_path,
+            is_tracking_repo = info.is_tracking_repo,
+            is_tracking_registry = info.is_tracking_registry,
+            source = info.source,
+            dependencies = collect(values(info.dependencies)),
         )
         push!(rows, row)
     end
 
-    sort!(rows; by=r -> (r.is_direct_dep ? 0 : 1, lowercase(r.name)))
+    sort!(rows; by = r -> (r.is_direct_dep ? 0 : 1, lowercase(r.name)))
     return rows
 end
 
@@ -118,12 +118,16 @@ end
 
 Add a package by name, optionally at a specific version. Returns a status message.
 """
-function add_package(name::String, io::IOBuffer; version::Union{String, Nothing}=nothing)::String
+function add_package(
+    name::String,
+    io::IOBuffer;
+    version::Union{String,Nothing} = nothing,
+)::String
     try
         if version !== nothing
-            Pkg.add(; name=name, version=version, io=io)
+            Pkg.add(; name = name, version = version, io = io)
         else
-            Pkg.add(name; io=io)
+            Pkg.add(name; io = io)
         end
         ver_str = version !== nothing ? "@$version" : ""
         return "Package '$name'$ver_str added successfully."
@@ -138,7 +142,7 @@ end
 Remove a package by name. Returns a status message.
 """
 function remove_package(name::String, io::IOBuffer)::String
-    Pkg.rm(name; io=io)
+    Pkg.rm(name; io = io)
     return "Package '$name' removed successfully."
 end
 
@@ -148,7 +152,7 @@ end
 Update a specific package. Returns a status message.
 """
 function update_package(name::String, io::IOBuffer)::String
-    Pkg.update(name; io=io)
+    Pkg.update(name; io = io)
     return "Package '$name' updated successfully."
 end
 
@@ -158,7 +162,7 @@ end
 Update all packages. Returns a status message.
 """
 function update_all(io::IOBuffer)::String
-    Pkg.update(; io=io)
+    Pkg.update(; io = io)
     return "All packages updated."
 end
 
@@ -167,12 +171,16 @@ end
 
 Pin a package to its current version, or to a specific version if provided.
 """
-function pin_package(name::String, io::IOBuffer; version::Union{VersionNumber, Nothing}=nothing)::String
+function pin_package(
+    name::String,
+    io::IOBuffer;
+    version::Union{VersionNumber,Nothing} = nothing,
+)::String
     if version !== nothing
-        Pkg.pin(; name=name, version=version, io=io)
+        Pkg.pin(; name = name, version = version, io = io)
         return "Package '$name' pinned to v$version."
     else
-        Pkg.pin(name; io=io)
+        Pkg.pin(name; io = io)
         return "Package '$name' pinned."
     end
 end
@@ -183,7 +191,7 @@ end
 Free a pinned package or stop tracking a path.
 """
 function free_package(name::String, io::IOBuffer)::String
-    Pkg.free(name; io=io)
+    Pkg.free(name; io = io)
     return "Package '$name' freed."
 end
 
@@ -197,9 +205,9 @@ end
 Capture `Pkg.status(; outdated=true)` output and parse it to find packages
 that have updates available. Returns parsed info and raw output.
 """
-function fetch_outdated(io::IOBuffer)::Tuple{Vector{UpdateInfo}, String}
+function fetch_outdated(io::IOBuffer)::Tuple{Vector{UpdateInfo},String}
     buf = IOBuffer()
-    Pkg.status(; outdated=true, mode=Pkg.PKGMODE_MANIFEST, io=buf)
+    Pkg.status(; outdated = true, mode = Pkg.PKGMODE_MANIFEST, io = buf)
     raw = String(take!(buf))
 
     updates = UpdateInfo[]
@@ -260,14 +268,17 @@ function fetch_outdated(io::IOBuffer)::Tuple{Vector{UpdateInfo}, String}
             blocker = something(blocker, "[compat]")
         end
 
-        push!(updates, UpdateInfo(
-            name=name,
-            current_version=current_ver,
-            latest_compatible=latest_compat,
-            latest_available=latest_avail,
-            blocker=blocker,
-            can_update=can_update,
-        ))
+        push!(
+            updates,
+            UpdateInfo(
+                name = name,
+                current_version = current_ver,
+                latest_compatible = latest_compat,
+                latest_available = latest_avail,
+                blocker = blocker,
+                can_update = can_update,
+            ),
+        )
     end
 
     return (updates, raw)
@@ -281,7 +292,7 @@ Captures the status diff.
 """
 function dry_run_update(io::IOBuffer)::String
     buf = IOBuffer()
-    Pkg.status(; outdated=true, mode=Pkg.PKGMODE_PROJECT, io=buf)
+    Pkg.status(; outdated = true, mode = Pkg.PKGMODE_PROJECT, io = buf)
     return String(take!(buf))
 end
 
@@ -296,7 +307,7 @@ Call `Pkg.why(name)` and return the captured output showing the dependency path.
 """
 function why_package(name::String, io::IOBuffer)::String
     buf = IOBuffer()
-    Pkg.why(name; io=buf)
+    Pkg.why(name; io = buf)
     return String(take!(buf))
 end
 
@@ -312,13 +323,13 @@ cached (the common case) that returns nothing, so we fall back to measuring
 **load times** in a fresh Julia subprocess.
 Returns [(name, seconds), ...] sorted by time descending.
 """
-function run_precompile_profiling(io::IOBuffer)::Vector{Tuple{String, Float64}}
+function run_precompile_profiling(io::IOBuffer)::Vector{Tuple{String,Float64}}
     # ── Attempt 1: Pkg.precompile timing ──────────────────────────────────
     buf = IOBuffer()
-    Pkg.precompile(; timing=true, io=buf)
+    Pkg.precompile(; timing = true, io = buf)
     raw = String(take!(buf))
 
-    timings = Tuple{String, Float64}[]
+    timings = Tuple{String,Float64}[]
     for line in split(raw, '\n')
         # Actual format from Base.Precompilation:
         #   "    388.7 ms  ✓ PackageName"
@@ -340,13 +351,13 @@ function run_precompile_profiling(io::IOBuffer)::Vector{Tuple{String, Float64}}
     end
 
     if !isempty(timings)
-        sort!(timings; by=last, rev=true)
+        sort!(timings; by = last, rev = true)
         return timings
     end
 
     # ── Attempt 2: measure load times in a fresh subprocess ───────────────
     timings = _measure_load_times()
-    sort!(timings; by=last, rev=true)
+    sort!(timings; by = last, rev = true)
     return timings
 end
 
@@ -357,13 +368,13 @@ Spawn a separate Julia subprocess **per package** so that shared transitive
 dependencies don't deflate subsequent measurements.  Runs up to 4 subprocesses
 in parallel via `asyncmap` for speed.
 """
-function _measure_load_times()::Vector{Tuple{String, Float64}}
+function _measure_load_times()::Vector{Tuple{String,Float64}}
     proj = Pkg.project()
     proj_dir = proj.path !== nothing ? dirname(proj.path) : nothing
-    proj_dir === nothing && return Tuple{String, Float64}[]
+    proj_dir === nothing && return Tuple{String,Float64}[]
 
     dep_names = collect(keys(proj.dependencies))
-    isempty(dep_names) && return Tuple{String, Float64}[]
+    isempty(dep_names) && return Tuple{String,Float64}[]
 
     # Each subprocess measures a single package in isolation.
     # Use a unique marker prefix so we can filter out noisy Pkg/CondaPkg output.
@@ -380,7 +391,7 @@ function _measure_load_times()::Vector{Tuple{String, Float64}}
     julia_cmd = Base.julia_cmd()
 
     # Launch one subprocess per package, up to 4 concurrently.
-    results = asyncmap(dep_names; ntasks=4) do name
+    results = asyncmap(dep_names; ntasks = 4) do name
         try
             cmd = `$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`
             output = read(cmd, String)
@@ -401,7 +412,7 @@ function _measure_load_times()::Vector{Tuple{String, Float64}}
         return nothing
     end
 
-    timings = Tuple{String, Float64}[]
+    timings = Tuple{String,Float64}[]
     for r in results
         r !== nothing && push!(timings, r)
     end
@@ -436,13 +447,16 @@ function measure_disk_sizes(packages::Vector{PackageRow})::Vector{PackageMetrics
                 # Permission errors etc — just use 0
             end
         end
-        push!(metrics, PackageMetrics(
-            name=pkg.name,
-            disk_size_bytes=size_bytes,
-            is_direct=pkg.is_direct_dep,
-        ))
+        push!(
+            metrics,
+            PackageMetrics(
+                name = pkg.name,
+                disk_size_bytes = size_bytes,
+                is_direct = pkg.is_direct_dep,
+            ),
+        )
     end
-    sort!(metrics; by=m -> m.disk_size_bytes, rev=true)
+    sort!(metrics; by = m -> m.disk_size_bytes, rev = true)
     return metrics
 end
 
@@ -459,7 +473,7 @@ are root nodes; their transitive deps become children.
 function build_dependency_tree(packages::Vector{PackageRow})::TreeNode
     pkg_map = Dict(p.uuid => p for p in packages)
 
-    function make_node(uuid::UUID, visited::Set{UUID})::Union{TreeNode, Nothing}
+    function make_node(uuid::UUID, visited::Set{UUID})::Union{TreeNode,Nothing}
         uuid in visited && return nothing
         !haskey(pkg_map, uuid) && return nothing
         push!(visited, uuid)
@@ -471,13 +485,13 @@ function build_dependency_tree(packages::Vector{PackageRow})::TreeNode
             child = make_node(dep_uuid, copy(visited))
             child !== nothing && push!(children, child)
         end
-        sort!(children; by=n -> n.label)
+        sort!(children; by = n -> n.label)
         return TreeNode(label, children)
     end
 
     # Root nodes are direct dependencies
     direct = filter(p -> p.is_direct_dep, packages)
-    sort!(direct; by=p -> lowercase(p.name))
+    sort!(direct; by = p -> lowercase(p.name))
 
     root_children = TreeNode[]
     for pkg in direct
@@ -493,7 +507,9 @@ end
 
 Create nodes and edges for force-directed graph visualization.
 """
-function build_graph_layout(packages::Vector{PackageRow})::Tuple{Vector{GraphNode}, Vector{GraphEdge}}
+function build_graph_layout(
+    packages::Vector{PackageRow},
+)::Tuple{Vector{GraphNode},Vector{GraphEdge}}
     nodes = GraphNode[]
     edges = GraphEdge[]
     uuid_set = Set(p.uuid for p in packages)
@@ -502,20 +518,23 @@ function build_graph_layout(packages::Vector{PackageRow})::Tuple{Vector{GraphNod
     for (i, pkg) in enumerate(packages)
         angle = 2π * i / length(packages)
         r = 30.0 + 10.0 * rand()
-        push!(nodes, GraphNode(
-            name=pkg.name,
-            uuid=pkg.uuid,
-            x=50.0 + r * cos(angle),
-            y=20.0 + r * sin(angle) * 0.5,
-            is_direct=pkg.is_direct_dep,
-        ))
+        push!(
+            nodes,
+            GraphNode(
+                name = pkg.name,
+                uuid = pkg.uuid,
+                x = 50.0 + r * cos(angle),
+                y = 20.0 + r * sin(angle) * 0.5,
+                is_direct = pkg.is_direct_dep,
+            ),
+        )
     end
 
     # Create edges
     for pkg in packages
         for dep_uuid in pkg.dependencies
             if dep_uuid in uuid_set
-                push!(edges, GraphEdge(from=pkg.uuid, to=dep_uuid))
+                push!(edges, GraphEdge(from = pkg.uuid, to = dep_uuid))
             end
         end
     end
@@ -529,8 +548,12 @@ end
 
 One iteration of force-directed graph layout.
 """
-function step_force_layout!(nodes::Vector{GraphNode}, edges::Vector{GraphEdge};
-                            width::Float64=100.0, height::Float64=40.0)
+function step_force_layout!(
+    nodes::Vector{GraphNode},
+    edges::Vector{GraphEdge};
+    width::Float64 = 100.0,
+    height::Float64 = 40.0,
+)
     n = length(nodes)
     n == 0 && return
 
@@ -538,8 +561,8 @@ function step_force_layout!(nodes::Vector{GraphNode}, edges::Vector{GraphEdge};
 
     # Repulsive forces between all node pairs
     repulsion = 500.0
-    for i in 1:n
-        for j in (i+1):n
+    for i = 1:n
+        for j = (i+1):n
             dx = nodes[i].x - nodes[j].x
             dy = nodes[i].y - nodes[j].y
             dist = max(sqrt(dx^2 + dy^2), 0.1)

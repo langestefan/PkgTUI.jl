@@ -191,7 +191,7 @@ end
     following::Bool = true              # auto-scroll to bottom
     search_active::Bool = false
     search_query::String = ""
-    search_input::TextInput = TextInput(; label="  Search: ", focused=false)
+    search_input::TextInput = TextInput(; label = "  Search: ", focused = false)
 end
 
 # ── Main application model ────────────────────────────────────────────────────

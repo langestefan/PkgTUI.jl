@@ -18,15 +18,19 @@ function render_triage_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     # Clear the background behind the overlay so underlying content doesn't bleed through
     blank = " "^overlay_rect.width
-    for y in overlay_rect.y:(overlay_rect.y + overlay_rect.height - 1)
+    for y = overlay_rect.y:(overlay_rect.y+overlay_rect.height-1)
         set_string!(buf, overlay_rect.x, y, blank, tstyle(:text))
     end
 
-    inner = render(Block(
-        title="Install Triage: $(tr.package_name)",
-        border_style=tstyle(:accent),
-        box=BOX_DOUBLE,
-    ), overlay_rect, buf)
+    inner = render(
+        Block(
+            title = "Install Triage: $(tr.package_name)",
+            border_style = tstyle(:accent),
+            box = BOX_DOUBLE,
+        ),
+        overlay_rect,
+        buf,
+    )
 
     # Layout: scroll pane content | bottom status bar
     rows = split_layout(Layout(Vertical, [Fill(), Fixed(1)]), inner)
@@ -37,15 +41,22 @@ function render_triage_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     render(tr.scroll_pane, content_area, buf)
 
     # Bottom action bar
-    render(StatusBar(
-        left=[
-            Span("  ↑↓ scroll ", tstyle(:text_dim)),
-            Span("[o]utput ", tr.pkg_output_expanded ? tstyle(:success) : tstyle(:accent)),
-            Span("[r]etry ", tstyle(:accent)),
-            Span("[Esc] close ", tstyle(:text_dim)),
-        ],
-        right=[],
-    ), status_area, buf)
+    render(
+        StatusBar(
+            left = [
+                Span("  ↑↓ scroll ", tstyle(:text_dim)),
+                Span(
+                    "[o]utput ",
+                    tr.pkg_output_expanded ? tstyle(:success) : tstyle(:accent),
+                ),
+                Span("[r]etry ", tstyle(:accent)),
+                Span("[Esc] close ", tstyle(:text_dim)),
+            ],
+            right = [],
+        ),
+        status_area,
+        buf,
+    )
 end
 
 """
@@ -143,7 +154,7 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
     push!(lines, "")
 
     # Build the scroll pane
-    tr.scroll_pane = ScrollPane(lines; following=false)
+    tr.scroll_pane = ScrollPane(lines; following = false)
 end
 
 """
@@ -152,13 +163,18 @@ end
 Parse the error and Pkg output to produce a short 2-4 line summary
 identifying the most likely root cause.
 """
-function extract_error_summary(error_msg::String, pkg_log::String, pkg_name::String)::Vector{String}
+function extract_error_summary(
+    error_msg::String,
+    pkg_log::String,
+    pkg_name::String,
+)::Vector{String}
     combined = error_msg * "\n" * pkg_log
     lower = lowercase(combined)
     summary = String[]
 
     # ── Unsatisfiable / compat conflicts ──
-    if occursin("unsatisfiable", lower) || occursin("resolve", lower) && occursin("compat", lower)
+    if occursin("unsatisfiable", lower) ||
+       occursin("resolve", lower) && occursin("compat", lower)
         push!(summary, "Root cause: Dependency conflict")
         # Try to extract the conflicting constraint
         for line in split(combined, '\n')
@@ -176,7 +192,8 @@ function extract_error_summary(error_msg::String, pkg_log::String, pkg_name::Str
     end
 
     # ── Package not found ──
-    if occursin("not found", lower) || occursin("does not exist", lower) ||
+    if occursin("not found", lower) ||
+       occursin("does not exist", lower) ||
        occursin("no registered package", lower)
         push!(summary, "Root cause: Package not found in registry")
         push!(summary, "'$(pkg_name)' may be misspelled or not registered.")
@@ -184,15 +201,18 @@ function extract_error_summary(error_msg::String, pkg_log::String, pkg_name::Str
     end
 
     # ── Network / download failures ──
-    if occursin("network", lower) || occursin("dns", lower) ||
-       occursin("timeout", lower) || occursin("could not resolve host", lower)
+    if occursin("network", lower) ||
+       occursin("dns", lower) ||
+       occursin("timeout", lower) ||
+       occursin("could not resolve host", lower)
         push!(summary, "Root cause: Network error")
         push!(summary, "Could not download package or registry data.")
         return summary
     end
 
     # ── Permission errors ──
-    if occursin("permission denied", lower) || occursin("access denied", lower) ||
+    if occursin("permission denied", lower) ||
+       occursin("access denied", lower) ||
        occursin("eacces", lower)
         push!(summary, "Root cause: Permission denied")
         push!(summary, "Check write access to ~/.julia/ depot.")
@@ -200,7 +220,8 @@ function extract_error_summary(error_msg::String, pkg_log::String, pkg_name::Str
     end
 
     # ── Build / compile errors ──
-    if occursin("build error", lower) || occursin("precompile error", lower) ||
+    if occursin("build error", lower) ||
+       occursin("precompile error", lower) ||
        occursin("failed to precompile", lower)
         push!(summary, "Root cause: Build/precompile failure")
         # Try to find the actual error line
@@ -250,9 +271,15 @@ function analyze_error(error_msg::String, pkg_name::String)::Vector{String}
     if occursin("unsatisfiable", msg_lower) || occursin("compat", msg_lower)
         push!(suggestions, "Compatibility constraints are blocking installation.")
         push!(suggestions, "Try: Pkg.update() to widen compat bounds, then retry.")
-        push!(suggestions, "Check if $(pkg_name) supports your Julia version (v$(VERSION)).")
+        push!(
+            suggestions,
+            "Check if $(pkg_name) supports your Julia version (v$(VERSION)).",
+        )
         push!(suggestions, "Look for compat constraints in your Project.toml.")
-        push!(suggestions, "Consider: Pkg.add(name=\"$(pkg_name)\", version=\"older-version\").")
+        push!(
+            suggestions,
+            "Consider: Pkg.add(name=\"$(pkg_name)\", version=\"older-version\").",
+        )
     end
 
     if occursin("not found", msg_lower) || occursin("does not exist", msg_lower)
@@ -262,7 +289,9 @@ function analyze_error(error_msg::String, pkg_name::String)::Vector{String}
         push!(suggestions, "Try: Pkg.add(url=\"https://github.com/...\")")
     end
 
-    if occursin("network", msg_lower) || occursin("dns", msg_lower) || occursin("timeout", msg_lower)
+    if occursin("network", msg_lower) ||
+       occursin("dns", msg_lower) ||
+       occursin("timeout", msg_lower)
         push!(suggestions, "A network error occurred during installation.")
         push!(suggestions, "Check your internet connection.")
         push!(suggestions, "Try again — it might be a transient issue.")
@@ -341,7 +370,7 @@ function handle_triage_keys!(m::PkgTUIApp, evt::KeyEvent)
         spawn_task!(m.tq, :add) do
             io = IOBuffer()
             result = add_package(pkg_name, io)
-            (result=result, log=String(take!(io)), name=pkg_name)
+            (result = result, log = String(take!(io)), name = pkg_name)
         end
         return
     end

@@ -17,19 +17,31 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     left_rows = split_layout(Layout(Vertical, [Fixed(3), Fill(), Fixed(1)]), cols[1])
 
     # Search bar
-    search_inner = render(Block(title="Search Registry", border_style=tstyle(:border)),
-        left_rows[1], buf)
+    search_inner = render(
+        Block(title = "Search Registry", border_style = tstyle(:border)),
+        left_rows[1],
+        buf,
+    )
     render(st.search_input, search_inner, buf)
 
     # Results list
-    results_inner = render(Block(
-        title=st.loading ? "Searching..." : "Results ($(length(st.results)))",
-        border_style=tstyle(:border)
-    ), left_rows[2], buf)
+    results_inner = render(
+        Block(
+            title = st.loading ? "Searching..." : "Results ($(length(st.results)))",
+            border_style = tstyle(:border),
+        ),
+        left_rows[2],
+        buf,
+    )
 
     if !st.index_loaded
-        set_string!(buf, results_inner.x + 2, results_inner.y + 1,
-            "Loading registry index...", tstyle(:text_dim, italic=true))
+        set_string!(
+            buf,
+            results_inner.x + 2,
+            results_inner.y + 1,
+            "Loading registry index...",
+            tstyle(:text_dim, italic = true),
+        )
     elseif isempty(st.results)
         query = text(st.search_input)
         msg = isempty(strip(query)) ? "Type to search packages" : "No packages found"
@@ -55,7 +67,7 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         ver_x = results_inner.x + 24
         status_x = ver_x + 10
 
-        for i in 1:visible
+        for i = 1:visible
             idx = i + st.scroll_offset
             idx > length(st.results) && break
             pkg = st.results[idx]
@@ -71,11 +83,11 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
 
             # Name column
             name_style = if is_installed
-                tstyle(:success, bold=is_selected)
+                tstyle(:success, bold = is_selected)
             elseif is_failed
-                tstyle(:error, bold=is_selected)
+                tstyle(:error, bold = is_selected)
             elseif is_selected
-                tstyle(:accent, bold=true)
+                tstyle(:accent, bold = true)
             else
                 tstyle(:primary)
             end
@@ -83,16 +95,26 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
 
             # Version column (always shown)
             if pkg.latest_version !== nothing
-                set_string!(buf, ver_x, y, "v" * pkg.latest_version,
-                    is_selected ? tstyle(:accent) : tstyle(:text_dim))
+                set_string!(
+                    buf,
+                    ver_x,
+                    y,
+                    "v" * pkg.latest_version,
+                    is_selected ? tstyle(:accent) : tstyle(:text_dim),
+                )
             end
 
             # Status column
             if is_installing
                 spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
                 frame = mod(m.tick ÷ 4, length(spinner_chars)) + 1
-                set_string!(buf, status_x, y, "$(spinner_chars[frame]) Installing…",
-                    tstyle(:warning, bold=true))
+                set_string!(
+                    buf,
+                    status_x,
+                    y,
+                    "$(spinner_chars[frame]) Installing…",
+                    tstyle(:warning, bold = true),
+                )
             elseif is_installed
                 set_string!(buf, status_x, y, "Installed ✓", tstyle(:success))
             elseif is_failed
@@ -102,7 +124,9 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     end
 
     # Action hints — show [t]riage when a failed package is selected
-    selected_is_failed = !isempty(st.results) && st.selected >= 1 &&
+    selected_is_failed =
+        !isempty(st.results) &&
+        st.selected >= 1 &&
         st.selected <= length(st.results) &&
         st.results[st.selected].name in st.failed_names
 
@@ -114,18 +138,26 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     if selected_is_failed
         push!(hint_spans, Span("[t]riage ", tstyle(:error)))
     end
-    render(StatusBar(left=hint_spans, right=[]), left_rows[3], buf)
+    render(StatusBar(left = hint_spans, right = []), left_rows[3], buf)
 
     # ── Right panel: detail ──
-    detail_inner = render(Block(title="Package Details", border_style=tstyle(:border)),
-        cols[2], buf)
+    detail_inner = render(
+        Block(title = "Package Details", border_style = tstyle(:border)),
+        cols[2],
+        buf,
+    )
 
     if !isempty(st.results) && st.selected >= 1 && st.selected <= length(st.results)
         pkg = st.results[st.selected]
         render_registry_detail(pkg, detail_inner, buf)
     else
-        set_string!(buf, detail_inner.x + 2, detail_inner.y + 1,
-            "Select a package to see details", tstyle(:text_dim))
+        set_string!(
+            buf,
+            detail_inner.x + 2,
+            detail_inner.y + 1,
+            "Select a package to see details",
+            tstyle(:text_dim),
+        )
     end
 end
 
@@ -134,7 +166,7 @@ function render_registry_detail(pkg::RegistryPackage, area::Rect, buf::Buffer)
     y = area.y
     x = area.x + 2
 
-    set_string!(buf, x, y, pkg.name, tstyle(:primary, bold=true))
+    set_string!(buf, x, y, pkg.name, tstyle(:primary, bold = true))
     y += 2
 
     if pkg.latest_version !== nothing
@@ -146,16 +178,15 @@ function render_registry_detail(pkg::RegistryPackage, area::Rect, buf::Buffer)
     if pkg.uuid !== nothing
         set_string!(buf, x, y, "UUID: ", tstyle(:text_dim))
         uuid_str = string(pkg.uuid)
-        display_uuid = length(uuid_str) > area.width - 10 ?
-            uuid_str[1:area.width-10] : uuid_str
+        display_uuid =
+            length(uuid_str) > area.width - 10 ? uuid_str[1:area.width-10] : uuid_str
         set_string!(buf, x + 6, y, display_uuid, tstyle(:text))
         y += 1
     end
 
     if pkg.repo !== nothing
         set_string!(buf, x, y, "Repo: ", tstyle(:text_dim))
-        repo_str = length(pkg.repo) > area.width - 10 ?
-            pkg.repo[1:area.width-10] : pkg.repo
+        repo_str = length(pkg.repo) > area.width - 10 ? pkg.repo[1:area.width-10] : pkg.repo
         set_string!(buf, x + 6, y, repo_str, tstyle(:text))
         y += 1
     end
@@ -199,25 +230,25 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         if evt.key == :escape
             # Unfocus but keep the search query
             st.search_input = TextInput(;
-                label="  Search: ",
-                text=text(st.search_input),
-                focused=false,
+                label = "  Search: ",
+                text = text(st.search_input),
+                focused = false,
             )
             return true
         elseif evt.key == :enter
             # Unfocus search, keep query
             st.search_input = TextInput(;
-                label="  Search: ",
-                text=text(st.search_input),
-                focused=false
+                label = "  Search: ",
+                text = text(st.search_input),
+                focused = false,
             )
             return true
         elseif evt.key == :down
             # Move focus from search input to results list
             st.search_input = TextInput(;
-                label="  Search: ",
-                text=text(st.search_input),
-                focused=false,
+                label = "  Search: ",
+                text = text(st.search_input),
+                focused = false,
             )
             st.selected = max(1, st.selected)
             return true
@@ -238,9 +269,9 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         c = evt.char
         if c == '/'
             st.search_input = TextInput(;
-                label="  Search: ",
-                text=text(st.search_input),
-                focused=true
+                label = "  Search: ",
+                text = text(st.search_input),
+                focused = true,
             )
             return true
         elseif c == 'v'
@@ -289,7 +320,7 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             spawn_task!(m.tq, :add) do
                 io = IOBuffer()
                 result = add_package(pkg.name, io)
-                (result=result, log=String(take!(io)), name=pkg.name)
+                (result = result, log = String(take!(io)), name = pkg.name)
             end
         end
         return true
@@ -297,9 +328,9 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         if st.selected <= 1
             # At top of results — move focus back to search input
             st.search_input = TextInput(;
-                label="  Search: ",
-                text=text(st.search_input),
-                focused=true,
+                label = "  Search: ",
+                text = text(st.search_input),
+                focused = true,
             )
         else
             st.selected = st.selected - 1
@@ -351,15 +382,19 @@ function render_version_picker(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     # Clear background
     blank = " "^overlay_rect.width
-    for y in overlay_rect.y:(overlay_rect.y + overlay_rect.height - 1)
+    for y = overlay_rect.y:(overlay_rect.y+overlay_rect.height-1)
         set_string!(buf, overlay_rect.x, y, blank, tstyle(:text))
     end
 
-    inner = render(Block(
-        title="Install $(vp.package_name) — Select Version",
-        border_style=tstyle(:accent),
-        box=BOX_DOUBLE,
-    ), overlay_rect, buf)
+    inner = render(
+        Block(
+            title = "Install $(vp.package_name) — Select Version",
+            border_style = tstyle(:accent),
+            box = BOX_DOUBLE,
+        ),
+        overlay_rect,
+        buf,
+    )
 
     # Layout: list | status bar
     rows = split_layout(Layout(Vertical, [Fill(), Fixed(1)]), inner)
@@ -375,7 +410,7 @@ function render_version_picker(m::PkgTUIApp, area::Rect, buf::Buffer)
         vp.scroll_offset = max(0, vp.selected - 1)
     end
 
-    for i in 1:visible
+    for i = 1:visible
         idx = i + vp.scroll_offset
         idx > length(vp.versions) && break
         y = list_area.y + i - 1
@@ -386,23 +421,33 @@ function render_version_picker(m::PkgTUIApp, area::Rect, buf::Buffer)
         end
 
         ver_str = "v" * vp.versions[idx]
-        style = is_selected ? tstyle(:accent, bold=true) : tstyle(:text)
+        style = is_selected ? tstyle(:accent, bold = true) : tstyle(:text)
         set_string!(buf, list_area.x + 2, y, ver_str, style)
 
         # Mark latest
         if idx == 1
-            set_string!(buf, list_area.x + 2 + length(ver_str) + 1, y, "(latest)", tstyle(:text_dim))
+            set_string!(
+                buf,
+                list_area.x + 2 + length(ver_str) + 1,
+                y,
+                "(latest)",
+                tstyle(:text_dim),
+            )
         end
     end
 
-    render(StatusBar(
-        left=[
-            Span("  ↑↓ select ", tstyle(:text_dim)),
-            Span("[Enter] install ", tstyle(:accent)),
-            Span("[Esc] cancel ", tstyle(:text_dim)),
-        ],
-        right=[],
-    ), status_area, buf)
+    render(
+        StatusBar(
+            left = [
+                Span("  ↑↓ select ", tstyle(:text_dim)),
+                Span("[Enter] install ", tstyle(:accent)),
+                Span("[Esc] cancel ", tstyle(:text_dim)),
+            ],
+            right = [],
+        ),
+        status_area,
+        buf,
+    )
 end
 
 """
@@ -450,15 +495,15 @@ function handle_version_picker_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             push_log!(m, "Installing $(pkg_name)@$(version)...")
             spawn_task!(m.tq, :add) do
                 io = IOBuffer()
-                result = add_package(pkg_name, io; version=version)
+                result = add_package(pkg_name, io; version = version)
                 # Pin to the selected version so compat is set correctly
                 if !startswith(result, "Error")
                     try
-                        pin_package(pkg_name, io; version=VersionNumber(version))
+                        pin_package(pkg_name, io; version = VersionNumber(version))
                     catch
                     end
                 end
-                (result=result, log=String(take!(io)), name=pkg_name)
+                (result = result, log = String(take!(io)), name = pkg_name)
             end
             vp.show = false
         end

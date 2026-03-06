@@ -22,7 +22,7 @@ function render_layout(m::PkgTUIApp, f::Frame)
     rows = split_layout(Layout(Vertical, constraints), area)
 
     # ── Tab bar ──
-    tabs = TabBar(m.tab_names; active=m.active_tab)
+    tabs = TabBar(m.tab_names; active = m.active_tab)
     render(tabs, rows[1], buf)
 
     # ── Active tab content ──
@@ -44,7 +44,8 @@ function render_layout(m::PkgTUIApp, f::Frame)
     # ── Log pane (not shown when Log tab is active) ──
     if m.show_log && m.active_tab != 6
         log_area = rows[3]
-        log_inner = render(Block(title="Log [l]", border_style=tstyle(:border)), log_area, buf)
+        log_inner =
+            render(Block(title = "Log [l]", border_style = tstyle(:border)), log_area, buf)
         render(m.log_pane, log_inner, buf)
     end
 
@@ -62,7 +63,7 @@ function render_layout(m::PkgTUIApp, f::Frame)
     pkg_count = m.project_info.dep_count
 
     left_spans = [
-        Span("  $(env_name)$(ws_indicator) ", tstyle(:accent, bold=true)),
+        Span("  $(env_name)$(ws_indicator) ", tstyle(:accent, bold = true)),
         Span(" $(pkg_count) deps ", tstyle(:text_dim)),
     ]
     if !isempty(m.status_message)
@@ -77,7 +78,7 @@ function render_layout(m::PkgTUIApp, f::Frame)
         Span("[q]uit ", tstyle(:text_dim)),
     ]
 
-    render(StatusBar(left=left_spans, right=right_spans), status_row, buf)
+    render(StatusBar(left = left_spans, right = right_spans), status_row, buf)
 end
 
 """
@@ -87,8 +88,11 @@ Render a full-screen help overlay with keybinding reference.
 """
 function render_help_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     help_rect = center(area, min(area.width - 4, 70), min(area.height - 4, 30))
-    inner = render(Block(title="Help — PkgTUI", border_style=tstyle(:accent),
-                          box=BOX_DOUBLE), help_rect, buf)
+    inner = render(
+        Block(title = "Help — PkgTUI", border_style = tstyle(:accent), box = BOX_DOUBLE),
+        help_rect,
+        buf,
+    )
 
     help_lines = [
         "Global Keys:",
@@ -140,7 +144,7 @@ function render_help_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     for (i, line) in enumerate(help_lines)
         y = inner.y + i - 1
         y > inner.y + inner.height - 1 && break
-        style = startswith(line, "  ") ? tstyle(:text) : tstyle(:accent, bold=true)
+        style = startswith(line, "  ") ? tstyle(:text) : tstyle(:accent, bold = true)
         set_string!(buf, inner.x + 1, y, line, style)
     end
 end
@@ -155,8 +159,15 @@ function render_env_switcher(m::PkgTUIApp, area::Rect, buf::Buffer)
     w = min(60, area.width - 4)
     env_rect = center(area, w, h)
 
-    inner = render(Block(title="Switch Environment", border_style=tstyle(:accent),
-                          box=BOX_ROUNDED), env_rect, buf)
+    inner = render(
+        Block(
+            title = "Switch Environment",
+            border_style = tstyle(:accent),
+            box = BOX_ROUNDED,
+        ),
+        env_rect,
+        buf,
+    )
 
     for (i, env) in enumerate(m.env_list)
         y = inner.y + i - 1
@@ -168,7 +179,13 @@ function render_env_switcher(m::PkgTUIApp, area::Rect, buf::Buffer)
         end
 
         if i == m.env_selected
-            set_string!(buf, inner.x + 1, y, "▶ " * display_name, tstyle(:accent, bold=true))
+            set_string!(
+                buf,
+                inner.x + 1,
+                y,
+                "▶ " * display_name,
+                tstyle(:accent, bold = true),
+            )
         else
             set_string!(buf, inner.x + 1, y, "  " * display_name, tstyle(:text))
         end

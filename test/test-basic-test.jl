@@ -22,7 +22,7 @@ end
 # Model tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "Model construction" tags=[:unit, :fast] begin
+@testitem "Model construction" tags = [:unit, :fast] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, ProjectInfo, InstalledState, PackageRow
 
@@ -51,17 +51,12 @@ end
     @test ist.adding == false
 end
 
-@testitem "PackageRow construction" tags=[:unit, :fast] begin
+@testitem "PackageRow construction" tags = [:unit, :fast] begin
     using UUIDs
     using PkgTUI: PackageRow
 
     uuid = UUID("12345678-1234-1234-1234-123456789abc")
-    row = PackageRow(
-        name="TestPkg",
-        uuid=uuid,
-        version="1.2.3",
-        is_direct_dep=true,
-    )
+    row = PackageRow(name = "TestPkg", uuid = uuid, version = "1.2.3", is_direct_dep = true)
     @test row.name == "TestPkg"
     @test row.version == "1.2.3"
     @test row.is_direct_dep == true
@@ -73,7 +68,7 @@ end
 # Backend tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "fetch_project_info" tags=[:unit] setup=[TempEnv] begin
+@testitem "fetch_project_info" tags = [:unit] setup = [TempEnv] begin
     using PkgTUI: fetch_project_info, ProjectInfo
 
     with_temp_env() do dir
@@ -83,7 +78,7 @@ end
     end
 end
 
-@testitem "fetch_installed in temp env" tags=[:unit] setup=[TempEnv] begin
+@testitem "fetch_installed in temp env" tags = [:unit] setup = [TempEnv] begin
     using PkgTUI: fetch_installed, PackageRow
 
     with_temp_env() do dir
@@ -98,16 +93,23 @@ end
 # Filter logic tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "apply_filter! filters by name" tags=[:unit, :fast] begin
+@testitem "apply_filter! filters by name" tags = [:unit, :fast] begin
     using Tachikoma
     using UUIDs
     using PkgTUI: InstalledState, PackageRow, apply_filter!
 
     st = InstalledState()
     st.packages = [
-        PackageRow(name="Alpha", uuid=UUID("11111111-0000-0000-0000-000000000001")),
-        PackageRow(name="Beta", uuid=UUID("11111111-0000-0000-0000-000000000002"), is_direct_dep=true),
-        PackageRow(name="AlphaExtra", uuid=UUID("11111111-0000-0000-0000-000000000003")),
+        PackageRow(name = "Alpha", uuid = UUID("11111111-0000-0000-0000-000000000001")),
+        PackageRow(
+            name = "Beta",
+            uuid = UUID("11111111-0000-0000-0000-000000000002"),
+            is_direct_dep = true,
+        ),
+        PackageRow(
+            name = "AlphaExtra",
+            uuid = UUID("11111111-0000-0000-0000-000000000003"),
+        ),
     ]
 
     # No filter → all packages
@@ -132,7 +134,7 @@ end
 # Registry search tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "fuzzy_match" tags=[:unit, :fast] begin
+@testitem "fuzzy_match" tags = [:unit, :fast] begin
     using PkgTUI: fuzzy_match
 
     @test fuzzy_match("dataframes", "df") == true
@@ -142,15 +144,15 @@ end
     @test fuzzy_match("abc", "abcd") == false
 end
 
-@testitem "search_registry with mock data" tags=[:unit, :fast] begin
+@testitem "search_registry with mock data" tags = [:unit, :fast] begin
     using PkgTUI: RegistryPackage, search_registry
 
     index = [
-        RegistryPackage(name="DataFrames"),
-        RegistryPackage(name="CSV"),
-        RegistryPackage(name="Plots"),
-        RegistryPackage(name="DataStructures"),
-        RegistryPackage(name="HTTP"),
+        RegistryPackage(name = "DataFrames"),
+        RegistryPackage(name = "CSV"),
+        RegistryPackage(name = "Plots"),
+        RegistryPackage(name = "DataStructures"),
+        RegistryPackage(name = "HTTP"),
     ]
 
     # Exact match
@@ -172,15 +174,25 @@ end
 # Conflict extraction tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "extract_conflicts" tags=[:unit, :fast] begin
+@testitem "extract_conflicts" tags = [:unit, :fast] begin
     using PkgTUI: UpdateInfo, ConflictInfo, extract_conflicts
 
     updates = [
-        UpdateInfo(name="A", current_version="1.0", can_update=true),
-        UpdateInfo(name="B", current_version="2.0", can_update=false,
-                   latest_available="3.0", blocker="C"),
-        UpdateInfo(name="D", current_version="1.5", can_update=false,
-                   latest_available="2.0", blocker="[compat]"),
+        UpdateInfo(name = "A", current_version = "1.0", can_update = true),
+        UpdateInfo(
+            name = "B",
+            current_version = "2.0",
+            can_update = false,
+            latest_available = "3.0",
+            blocker = "C",
+        ),
+        UpdateInfo(
+            name = "D",
+            current_version = "1.5",
+            can_update = false,
+            latest_available = "2.0",
+            blocker = "[compat]",
+        ),
     ]
 
     conflicts = extract_conflicts(updates)
@@ -195,7 +207,7 @@ end
 # Formatting tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "format_bytes" tags=[:unit, :fast] begin
+@testitem "format_bytes" tags = [:unit, :fast] begin
     using PkgTUI: format_bytes
 
     @test format_bytes(Int64(500)) == "500 B"
@@ -204,7 +216,7 @@ end
     @test format_bytes(Int64(1073741824)) == "1.0 GB"
 end
 
-@testitem "format_time" tags=[:unit, :fast] begin
+@testitem "format_time" tags = [:unit, :fast] begin
     using PkgTUI: format_time
 
     @test format_time(0.0) == "—"
@@ -219,7 +231,7 @@ end
 # Dependency tree tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "build_dependency_tree" tags=[:unit, :fast] begin
+@testitem "build_dependency_tree" tags = [:unit, :fast] begin
     using UUIDs
     using PkgTUI: PackageRow, build_dependency_tree
 
@@ -228,11 +240,21 @@ end
     uuid_c = UUID("cccccccc-0000-0000-0000-000000000003")
 
     packages = [
-        PackageRow(name="A", uuid=uuid_a, version="1.0", is_direct_dep=true,
-                   dependencies=[uuid_b]),
-        PackageRow(name="B", uuid=uuid_b, version="2.0", is_direct_dep=false,
-                   dependencies=[uuid_c]),
-        PackageRow(name="C", uuid=uuid_c, version="3.0", is_direct_dep=false),
+        PackageRow(
+            name = "A",
+            uuid = uuid_a,
+            version = "1.0",
+            is_direct_dep = true,
+            dependencies = [uuid_b],
+        ),
+        PackageRow(
+            name = "B",
+            uuid = uuid_b,
+            version = "2.0",
+            is_direct_dep = false,
+            dependencies = [uuid_c],
+        ),
+        PackageRow(name = "C", uuid = uuid_c, version = "3.0", is_direct_dep = false),
     ]
 
     root = build_dependency_tree(packages)
@@ -247,17 +269,25 @@ end
 # View rendering tests (TestBackend)
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "render installed tab" tags=[:view] begin
+@testitem "render installed tab" tags = [:view] begin
     using Tachikoma
     using UUIDs
     using PkgTUI: PkgTUIApp, PackageRow, apply_filter!, render_installed_tab
 
     m = PkgTUIApp()
     m.installed.packages = [
-        PackageRow(name="Example", uuid=UUID("7876af07-990d-54b4-ab0e-23690620f79a"),
-                   version="1.0.0", is_direct_dep=true),
-        PackageRow(name="HTTP", uuid=UUID("cd3eb016-35fb-5094-929b-558a96fad6f3"),
-                   version="1.10.0", is_direct_dep=true),
+        PackageRow(
+            name = "Example",
+            uuid = UUID("7876af07-990d-54b4-ab0e-23690620f79a"),
+            version = "1.0.0",
+            is_direct_dep = true,
+        ),
+        PackageRow(
+            name = "HTTP",
+            uuid = UUID("cd3eb016-35fb-5094-929b-558a96fad6f3"),
+            version = "1.10.0",
+            is_direct_dep = true,
+        ),
     ]
     m.installed.loading = false
     apply_filter!(m.installed)
@@ -283,7 +313,7 @@ end
     @test true
 end
 
-@testitem "render updates tab" tags=[:view] begin
+@testitem "render updates tab" tags = [:view] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, UpdateInfo, ConflictInfo, extract_conflicts, render_updates_tab
 
@@ -297,8 +327,19 @@ end
 
     # With updates
     m.updates_state.updates = [
-        UpdateInfo(name="Foo", current_version="1.0.0", latest_compatible="2.0.0", can_update=true),
-        UpdateInfo(name="Bar", current_version="0.5.0", latest_available="1.0.0", can_update=false, blocker="Baz"),
+        UpdateInfo(
+            name = "Foo",
+            current_version = "1.0.0",
+            latest_compatible = "2.0.0",
+            can_update = true,
+        ),
+        UpdateInfo(
+            name = "Bar",
+            current_version = "0.5.0",
+            latest_available = "1.0.0",
+            can_update = false,
+            blocker = "Baz",
+        ),
     ]
     m.conflicts.conflicts = extract_conflicts(m.updates_state.updates)
     buf2 = Tachikoma.Buffer(area)
@@ -313,7 +354,7 @@ end
     @test true
 end
 
-@testitem "render registry tab" tags=[:view] begin
+@testitem "render registry tab" tags = [:view] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, RegistryPackage, render_registry_tab
 
@@ -329,8 +370,8 @@ end
     # With results
     m.registry.index_loaded = true
     m.registry.results = [
-        RegistryPackage(name="TestPkg", latest_version="1.0.0"),
-        RegistryPackage(name="AnotherPkg"),
+        RegistryPackage(name = "TestPkg", latest_version = "1.0.0"),
+        RegistryPackage(name = "AnotherPkg"),
     ]
     m.registry.selected = 1
     buf2 = Tachikoma.Buffer(area)
@@ -338,11 +379,16 @@ end
     @test true
 end
 
-@testitem "render dependencies tab" tags=[:view] begin
+@testitem "render dependencies tab" tags = [:view] begin
     using Tachikoma
     using UUIDs
-    using PkgTUI: PkgTUIApp, PackageRow, GraphNode, GraphEdge,
-                  build_dependency_tree, render_dependencies_tab
+    using PkgTUI:
+        PkgTUIApp,
+        PackageRow,
+        GraphNode,
+        GraphEdge,
+        build_dependency_tree,
+        render_dependencies_tab
 
     m = PkgTUIApp()
     area = Rect(1, 1, 100, 30)
@@ -357,13 +403,18 @@ end
     uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
     uuid_b = UUID("bbbbbbbb-0000-0000-0000-000000000002")
     packages = [
-        PackageRow(name="A", uuid=uuid_a, version="1.0", is_direct_dep=true,
-                   dependencies=[uuid_b]),
-        PackageRow(name="B", uuid=uuid_b, version="2.0", is_direct_dep=false),
+        PackageRow(
+            name = "A",
+            uuid = uuid_a,
+            version = "1.0",
+            is_direct_dep = true,
+            dependencies = [uuid_b],
+        ),
+        PackageRow(name = "B", uuid = uuid_b, version = "2.0", is_direct_dep = false),
     ]
     root = build_dependency_tree(packages)
     m.deps.tree_root = root
-    m.deps.tree_view = TreeView(root; block=Block())
+    m.deps.tree_view = TreeView(root; block = Block())
     buf2 = Tachikoma.Buffer(area)
     render_dependencies_tab(m, area, buf2)
     @test true
@@ -371,16 +422,16 @@ end
     # Graph mode
     m.deps.show_graph = true
     m.deps.graph_nodes = [
-        GraphNode(name="A", uuid=uuid_a, x=30.0, y=15.0, is_direct=true),
-        GraphNode(name="B", uuid=uuid_b, x=60.0, y=15.0, is_direct=false),
+        GraphNode(name = "A", uuid = uuid_a, x = 30.0, y = 15.0, is_direct = true),
+        GraphNode(name = "B", uuid = uuid_b, x = 60.0, y = 15.0, is_direct = false),
     ]
-    m.deps.graph_edges = [GraphEdge(from=uuid_a, to=uuid_b)]
+    m.deps.graph_edges = [GraphEdge(from = uuid_a, to = uuid_b)]
     buf3 = Tachikoma.Buffer(area)
     render_dependencies_tab(m, area, buf3)
     @test true
 end
 
-@testitem "render metrics tab" tags=[:view] begin
+@testitem "render metrics tab" tags = [:view] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, PackageMetrics, render_metrics_tab
 
@@ -394,8 +445,18 @@ end
 
     # With metrics data
     m.metrics.metrics = [
-        PackageMetrics(name="Big", disk_size_bytes=Int64(1048576), compile_time_seconds=5.0, is_direct=true),
-        PackageMetrics(name="Small", disk_size_bytes=Int64(1024), compile_time_seconds=0.5, is_direct=false),
+        PackageMetrics(
+            name = "Big",
+            disk_size_bytes = Int64(1048576),
+            compile_time_seconds = 5.0,
+            is_direct = true,
+        ),
+        PackageMetrics(
+            name = "Small",
+            disk_size_bytes = Int64(1024),
+            compile_time_seconds = 0.5,
+            is_direct = false,
+        ),
     ]
     buf2 = Tachikoma.Buffer(area)
     render_metrics_tab(m, area, buf2)
@@ -413,7 +474,7 @@ end
 # Key event handling tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "global key handling" tags=[:event] begin
+@testitem "global key handling" tags = [:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp
 
@@ -450,17 +511,25 @@ end
     @test m.quit == true
 end
 
-@testitem "installed tab key handling" tags=[:event] begin
+@testitem "installed tab key handling" tags = [:event] begin
     using Tachikoma
     using UUIDs
     using PkgTUI: PkgTUIApp, PackageRow, apply_filter!
 
     m = PkgTUIApp()
     m.installed.packages = [
-        PackageRow(name="A", uuid=UUID("aaaaaaaa-0000-0000-0000-000000000001"),
-                   is_direct_dep=true, version="1.0"),
-        PackageRow(name="B", uuid=UUID("bbbbbbbb-0000-0000-0000-000000000002"),
-                   is_direct_dep=true, version="2.0"),
+        PackageRow(
+            name = "A",
+            uuid = UUID("aaaaaaaa-0000-0000-0000-000000000001"),
+            is_direct_dep = true,
+            version = "1.0",
+        ),
+        PackageRow(
+            name = "B",
+            uuid = UUID("bbbbbbbb-0000-0000-0000-000000000002"),
+            is_direct_dep = true,
+            version = "2.0",
+        ),
     ]
     apply_filter!(m.installed)
     m.active_tab = 1
@@ -485,19 +554,34 @@ end
     @test m.installed.adding == false
 end
 
-@testitem "update pinned package shows modal" tags=[:event] begin
+@testitem "update pinned package shows modal" tags = [:event] begin
     using Tachikoma
     using UUIDs
-    using PkgTUI: PkgTUIApp, PackageRow, UpdateInfo, apply_filter!,
-                  handle_installed_keys!, handle_updates_keys!
+    using PkgTUI:
+        PkgTUIApp,
+        PackageRow,
+        UpdateInfo,
+        apply_filter!,
+        handle_installed_keys!,
+        handle_updates_keys!
 
     # ── Installed tab: 'u' on pinned package shows confirmation modal ──
     m = PkgTUIApp()
     m.installed.packages = [
-        PackageRow(name="PinnedPkg", uuid=UUID("aaaaaaaa-0000-0000-0000-000000000001"),
-                   is_direct_dep=true, version="1.2.3", is_pinned=true),
-        PackageRow(name="FreePkg", uuid=UUID("bbbbbbbb-0000-0000-0000-000000000002"),
-                   is_direct_dep=true, version="2.0.0", is_pinned=false),
+        PackageRow(
+            name = "PinnedPkg",
+            uuid = UUID("aaaaaaaa-0000-0000-0000-000000000001"),
+            is_direct_dep = true,
+            version = "1.2.3",
+            is_pinned = true,
+        ),
+        PackageRow(
+            name = "FreePkg",
+            uuid = UUID("bbbbbbbb-0000-0000-0000-000000000002"),
+            is_direct_dep = true,
+            version = "2.0.0",
+            is_pinned = false,
+        ),
     ]
     apply_filter!(m.installed)
     m.active_tab = 1
@@ -525,12 +609,16 @@ end
 
     # ── Updates tab: 'u' on pinned package shows modal ──
     m2 = PkgTUIApp()
-    m2.updates_state.updates = [
-        UpdateInfo(name="PinnedPkg", current_version="1.2.3", can_update=true),
-    ]
+    m2.updates_state.updates =
+        [UpdateInfo(name = "PinnedPkg", current_version = "1.2.3", can_update = true)]
     m2.installed.packages = [
-        PackageRow(name="PinnedPkg", uuid=UUID("aaaaaaaa-0000-0000-0000-000000000001"),
-                   is_direct_dep=true, version="1.2.3", is_pinned=true),
+        PackageRow(
+            name = "PinnedPkg",
+            uuid = UUID("aaaaaaaa-0000-0000-0000-000000000001"),
+            is_direct_dep = true,
+            version = "1.2.3",
+            is_pinned = true,
+        ),
     ]
     m2.updates_state.selected = 1
 
@@ -540,7 +628,7 @@ end
     @test m2.modal_target == "PinnedPkg"
 end
 
-@testitem "updates tab conflicts focus" tags=[:event] begin
+@testitem "updates tab conflicts focus" tags = [:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, ConflictInfo, UpdateInfo, handle_updates_keys!
 
@@ -549,12 +637,11 @@ end
 
     # Add conflicts
     m.conflicts.conflicts = [
-        ConflictInfo(package="Foo", held_at="1.0", latest="2.0", blocked_by="Bar"),
-        ConflictInfo(package="Baz", held_at="0.5", latest="1.0", blocked_by="Qux"),
+        ConflictInfo(package = "Foo", held_at = "1.0", latest = "2.0", blocked_by = "Bar"),
+        ConflictInfo(package = "Baz", held_at = "0.5", latest = "1.0", blocked_by = "Qux"),
     ]
-    m.updates_state.updates = [
-        UpdateInfo(name="Foo", current_version="1.0", can_update=false),
-    ]
+    m.updates_state.updates =
+        [UpdateInfo(name = "Foo", current_version = "1.0", can_update = false)]
 
     # 'c' toggles focus to conflicts panel
     @test m.updates_state.conflicts_focused == false
@@ -574,7 +661,7 @@ end
     @test m.updates_state.conflicts_focused == false
 end
 
-@testitem "draw_line! does not error" tags=[:view] begin
+@testitem "draw_line! does not error" tags = [:view] begin
     using Tachikoma
     using PkgTUI: draw_line!
 
@@ -598,7 +685,7 @@ end
     @test true
 end
 
-@testitem "get_selected_dep_name tree mode" tags=[:view] begin
+@testitem "get_selected_dep_name tree mode" tags = [:view] begin
     using Tachikoma
     using UUIDs
     using PkgTUI: PkgTUIApp, GraphNode, get_selected_dep_name
@@ -606,11 +693,8 @@ end
     m = PkgTUIApp()
 
     # Tree mode with TreeView
-    root = TreeNode("Dependencies", [
-        TreeNode("MyPkg v1.2.3"),
-        TreeNode("Other v0.5.0"),
-    ])
-    m.deps.tree_view = TreeView(root; block=Block())
+    root = TreeNode("Dependencies", [TreeNode("MyPkg v1.2.3"), TreeNode("Other v0.5.0")])
+    m.deps.tree_view = TreeView(root; block = Block())
     m.deps.tree_view.selected = 2  # "MyPkg v1.2.3"
     m.deps.show_graph = false
 
@@ -620,14 +704,14 @@ end
     # Graph mode
     uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
     m.deps.show_graph = true
-    m.deps.graph_nodes = [GraphNode(name="GraphPkg", uuid=uuid_a, is_direct=true)]
+    m.deps.graph_nodes = [GraphNode(name = "GraphPkg", uuid = uuid_a, is_direct = true)]
     m.deps.selected_node = uuid_a
 
     name = get_selected_dep_name(m.deps, m)
     @test name == "GraphPkg"
 end
 
-@testitem "help flag in @main" tags=[:basic] begin
+@testitem "help flag in @main" tags = [:basic] begin
     using PkgTUI
 
     # Capture --help output via a Pipe
@@ -647,20 +731,19 @@ end
 # Registry search key navigation tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "registry Escape preserves query" tags=[:event] begin
+@testitem "registry Escape preserves query" tags = [:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
 
     m = PkgTUIApp()
     m.active_tab = 3
     m.registry.index_loaded = true
-    m.registry.registry_index = [
-        RegistryPackage(name="DataFrames"),
-        RegistryPackage(name="CSV"),
-    ]
+    m.registry.registry_index =
+        [RegistryPackage(name = "DataFrames"), RegistryPackage(name = "CSV")]
 
     # Focus the search input and type a query
-    m.registry.search_input = TextInput(; label="  Search: ", text="Data", focused=true)
+    m.registry.search_input =
+        TextInput(; label = "  Search: ", text = "Data", focused = true)
     @test m.registry.search_input.focused == true
 
     # Press Escape — should unfocus but keep text
@@ -669,21 +752,20 @@ end
     @test text(m.registry.search_input) == "Data"
 end
 
-@testitem "registry down-arrow moves to results" tags=[:event] begin
+@testitem "registry down-arrow moves to results" tags = [:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
 
     m = PkgTUIApp()
     m.active_tab = 3
     m.registry.index_loaded = true
-    m.registry.results = [
-        RegistryPackage(name="DataFrames"),
-        RegistryPackage(name="CSV"),
-    ]
+    m.registry.results =
+        [RegistryPackage(name = "DataFrames"), RegistryPackage(name = "CSV")]
     m.registry.selected = 1
 
     # Focus search and type
-    m.registry.search_input = TextInput(; label="  Search: ", text="Data", focused=true)
+    m.registry.search_input =
+        TextInput(; label = "  Search: ", text = "Data", focused = true)
 
     # Press down-arrow — should unfocus search and put cursor on results
     handle_registry_keys!(m, KeyEvent(:down))
@@ -692,21 +774,20 @@ end
     @test m.registry.selected >= 1
 end
 
-@testitem "registry up-arrow from top refocuses search" tags=[:event] begin
+@testitem "registry up-arrow from top refocuses search" tags = [:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
 
     m = PkgTUIApp()
     m.active_tab = 3
     m.registry.index_loaded = true
-    m.registry.results = [
-        RegistryPackage(name="DataFrames"),
-        RegistryPackage(name="CSV"),
-    ]
+    m.registry.results =
+        [RegistryPackage(name = "DataFrames"), RegistryPackage(name = "CSV")]
     m.registry.selected = 1
 
     # Search is unfocused, selected is at 1 (top)
-    m.registry.search_input = TextInput(; label="  Search: ", text="Data", focused=false)
+    m.registry.search_input =
+        TextInput(; label = "  Search: ", text = "Data", focused = false)
 
     # Press up at position 1 — should focus search input
     handle_registry_keys!(m, KeyEvent(:up))
@@ -714,7 +795,7 @@ end
     @test text(m.registry.search_input) == "Data"
 end
 
-@testitem "installed filter Escape preserves text" tags=[:event] begin
+@testitem "installed filter Escape preserves text" tags = [:event] begin
     using Tachikoma
     using UUIDs
     using PkgTUI: PkgTUIApp, PackageRow, apply_filter!, handle_installed_keys!
@@ -722,13 +803,18 @@ end
     m = PkgTUIApp()
     m.active_tab = 1
     m.installed.packages = [
-        PackageRow(name="Alpha", uuid=UUID("aaaaaaaa-0000-0000-0000-000000000001"),
-                   is_direct_dep=true, version="1.0"),
+        PackageRow(
+            name = "Alpha",
+            uuid = UUID("aaaaaaaa-0000-0000-0000-000000000001"),
+            is_direct_dep = true,
+            version = "1.0",
+        ),
     ]
     apply_filter!(m.installed)
 
     # Focus filter and type
-    m.installed.filter_input = TextInput(; label="  Filter: ", text="alp", focused=true)
+    m.installed.filter_input =
+        TextInput(; label = "  Filter: ", text = "alp", focused = true)
 
     # Press Escape — should unfocus but keep text
     handle_installed_keys!(m, KeyEvent(:escape))
@@ -736,7 +822,7 @@ end
     @test text(m.installed.filter_input) == "alp"
 end
 
-@testitem "installed up-arrow from top focuses filter" tags=[:event] begin
+@testitem "installed up-arrow from top focuses filter" tags = [:event] begin
     using Tachikoma
     using UUIDs
     using PkgTUI: PkgTUIApp, PackageRow, apply_filter!, handle_installed_keys!
@@ -744,10 +830,18 @@ end
     m = PkgTUIApp()
     m.active_tab = 1
     m.installed.packages = [
-        PackageRow(name="A", uuid=UUID("aaaaaaaa-0000-0000-0000-000000000001"),
-                   is_direct_dep=true, version="1.0"),
-        PackageRow(name="B", uuid=UUID("bbbbbbbb-0000-0000-0000-000000000002"),
-                   is_direct_dep=true, version="2.0"),
+        PackageRow(
+            name = "A",
+            uuid = UUID("aaaaaaaa-0000-0000-0000-000000000001"),
+            is_direct_dep = true,
+            version = "1.0",
+        ),
+        PackageRow(
+            name = "B",
+            uuid = UUID("bbbbbbbb-0000-0000-0000-000000000002"),
+            is_direct_dep = true,
+            version = "2.0",
+        ),
     ]
     apply_filter!(m.installed)
     m.installed.selected = 1
@@ -761,7 +855,7 @@ end
 # Triage feature tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testitem "TriageState construction" tags=[:unit, :fast] begin
+@testitem "TriageState construction" tags = [:unit, :fast] begin
     using PkgTUI: TriageState
 
     tr = TriageState()
@@ -771,11 +865,12 @@ end
     @test tr.pkg_log == ""
 end
 
-@testitem "analyze_error suggestions" tags=[:unit, :fast] begin
+@testitem "analyze_error suggestions" tags = [:unit, :fast] begin
     using PkgTUI: analyze_error
 
     # Compat error
-    suggestions = analyze_error("Error in add: Unsatisfiable requirements detected for JuMP", "JuMP")
+    suggestions =
+        analyze_error("Error in add: Unsatisfiable requirements detected for JuMP", "JuMP")
     @test any(s -> occursin("Compatibility", s), suggestions)
     @test any(s -> occursin("retry", lowercase(s)) || occursin("Retry", s), suggestions)
 
@@ -793,7 +888,7 @@ end
     @test any(s -> occursin("retry", lowercase(s)) || occursin("[r]", s), suggestions)
 end
 
-@testitem "build_triage_content! populates scroll pane" tags=[:unit] begin
+@testitem "build_triage_content! populates scroll pane" tags = [:unit] begin
     using Tachikoma
     using PkgTUI: TriageState, ProjectInfo, build_triage_content!
 
@@ -802,11 +897,7 @@ end
     tr.error_message = "Error in add: Unsatisfiable requirements detected for package FailPkg"
     tr.pkg_log = "some log output"
 
-    pi = ProjectInfo(
-        name="TestProject",
-        path="/tmp/test/Project.toml",
-        dep_count=5,
-    )
+    pi = ProjectInfo(name = "TestProject", path = "/tmp/test/Project.toml", dep_count = 5)
 
     build_triage_content!(tr, pi)
 
@@ -823,10 +914,10 @@ end
     @test occursin("Compatibility", combined)
 end
 
-@testitem "triage key handling" tags=[:event] begin
+@testitem "triage key handling" tags = [:event] begin
     using Tachikoma
-    using PkgTUI: PkgTUIApp, TriageState, ProjectInfo, build_triage_content!,
-                  handle_triage_keys!
+    using PkgTUI:
+        PkgTUIApp, TriageState, ProjectInfo, build_triage_content!, handle_triage_keys!
 
     m = PkgTUIApp()
     m.triage.show = true
@@ -852,10 +943,10 @@ end
     @test m.triage.show == false
 end
 
-@testitem "triage overlay renders" tags=[:view] begin
+@testitem "triage overlay renders" tags = [:view] begin
     using Tachikoma
-    using PkgTUI: PkgTUIApp, TriageState, ProjectInfo, build_triage_content!,
-                  render_triage_overlay
+    using PkgTUI:
+        PkgTUIApp, TriageState, ProjectInfo, build_triage_content!, render_triage_overlay
 
     m = PkgTUIApp()
     m.triage.show = true
@@ -871,7 +962,7 @@ end
     @test true
 end
 
-@testitem "registry t key opens triage for failed package" tags=[:event] begin
+@testitem "registry t key opens triage for failed package" tags = [:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
 
@@ -879,8 +970,8 @@ end
     m.active_tab = 3
     m.registry.index_loaded = true
     m.registry.results = [
-        RegistryPackage(name="FailPkg", latest_version="1.0.0"),
-        RegistryPackage(name="GoodPkg", latest_version="2.0.0"),
+        RegistryPackage(name = "FailPkg", latest_version = "1.0.0"),
+        RegistryPackage(name = "GoodPkg", latest_version = "2.0.0"),
     ]
     m.registry.selected = 1
 
@@ -896,16 +987,14 @@ end
     @test m.triage.package_name == "FailPkg"
 end
 
-@testitem "registry t key ignored for non-failed package" tags=[:event] begin
+@testitem "registry t key ignored for non-failed package" tags = [:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
 
     m = PkgTUIApp()
     m.active_tab = 3
     m.registry.index_loaded = true
-    m.registry.results = [
-        RegistryPackage(name="GoodPkg", latest_version="2.0.0"),
-    ]
+    m.registry.results = [RegistryPackage(name = "GoodPkg", latest_version = "2.0.0")]
     m.registry.selected = 1
 
     # Press 't' on a non-failed package — should not open triage
@@ -913,7 +1002,7 @@ end
     @test m.triage.show == false
 end
 
-@testitem "VersionPickerState defaults" tags=[:unit, :fast] begin
+@testitem "VersionPickerState defaults" tags = [:unit, :fast] begin
     using PkgTUI: VersionPickerState
 
     vp = VersionPickerState()
@@ -924,16 +1013,14 @@ end
     @test vp.scroll_offset == 0
 end
 
-@testitem "version picker key v opens picker" tags=[:event] begin
+@testitem "version picker key v opens picker" tags = [:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
 
     m = PkgTUIApp()
     m.active_tab = 3
     m.registry.index_loaded = true
-    m.registry.results = [
-        RegistryPackage(name="JSON", latest_version="1.0.0"),
-    ]
+    m.registry.results = [RegistryPackage(name = "JSON", latest_version = "1.0.0")]
     m.registry.selected = 1
 
     # Press 'v' — should open version picker
@@ -943,7 +1030,7 @@ end
     @test m.registry.version_picker.package_name == "JSON"
 end
 
-@testitem "version picker navigation" tags=[:event] begin
+@testitem "version picker navigation" tags = [:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, handle_version_picker_keys!
 
@@ -975,7 +1062,7 @@ end
     @test vp.show == false
 end
 
-@testitem "render version picker overlay" tags=[:view] begin
+@testitem "render version picker overlay" tags = [:view] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, render_version_picker
 
@@ -991,7 +1078,7 @@ end
     @test true  # no crash
 end
 
-@testitem "version picker in RegistryState" tags=[:unit, :fast] begin
+@testitem "version picker in RegistryState" tags = [:unit, :fast] begin
     using PkgTUI: RegistryState
 
     rs = RegistryState()
