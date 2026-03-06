@@ -114,7 +114,7 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
             c = evt.char
             if occursin("[$(c)]", toast.hint)
                 dismiss_toast!(m)  # close toast before executing action
-                # Fall through to normal key handling so the action runs
+            # Fall through to normal key handling so the action runs
             else
                 return  # block all other keys
             end
@@ -317,15 +317,9 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             )
         elseif is_error
             set_status!(m, "Package install failed", :error)
-            push_toast!(
-                m,
-                "Package install failed";
-                style = :error,
-                icon = "✗",
-            )
+            push_toast!(m, "Package install failed"; style = :error, icon = "✗")
         else
             set_status!(m, msg, :success)
-            push_toast!(m, msg; style = :success, icon = "✓")
         end
         refresh_all!(m)
 
@@ -338,7 +332,6 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
         if pkg_name !== nothing
             delete!(m.registry.installed_names, pkg_name)
-            push_toast!(m, "Removed $(pkg_name)"; style = :success, icon = "✓")
         end
         refresh_all!(m)
 
@@ -355,7 +348,6 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             if pkg_name !== nothing
                 delete!(m.updates_state.updating_names, pkg_name)
                 push!(m.updates_state.updated_names, pkg_name)
-                push_toast!(m, "Updated $(pkg_name)"; style = :success, icon = "✓")
             end
         elseif evt.id == :update_all
             m.updates_state.update_all_running = false
@@ -363,7 +355,6 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
                 push!(m.updates_state.updated_names, info.name)
             end
             empty!(m.updates_state.updating_names)
-            push_toast!(m, "All packages updated"; style = :success, icon = "✓")
         end
 
         refresh_all!(m)
@@ -373,8 +364,6 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         msg = result isa NamedTuple ? result.result : string(result)
         push_log!(m, msg)
         set_status!(m, msg, :success)
-        action_word = evt.id == :pin ? "Pinned" : "Freed"
-        push_toast!(m, msg; style = :success, icon = "✓")
         refresh_all!(m)
 
     elseif evt.id == :fetch_outdated

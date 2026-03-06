@@ -181,10 +181,7 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     # ── Left panel: package list ──
     left_inner = render(
-        Block(
-            title = "Packages ($(length(pkgs)))",
-            border_style = tstyle(:border),
-        ),
+        Block(title = "Packages ($(length(pkgs)))", border_style = tstyle(:border)),
         cols[1],
         buf,
     )
@@ -203,7 +200,7 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
             st.graph_scroll = st.graph_selected - visible_h
         end
 
-        for i in 1:visible_h
+        for i = 1:visible_h
             idx = st.graph_scroll + i
             idx > length(pkgs) && break
             pkg = pkgs[idx]
@@ -223,13 +220,19 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
 
             # Highlight bar for selected
             if is_sel
-                for cx in left_inner.x:(left_inner.x + left_inner.width - 1)
+                for cx = left_inner.x:(left_inner.x+left_inner.width-1)
                     set_char!(buf, cx, y, ' ', tstyle(:accent))
                 end
             end
 
-            set_string!(buf, left_inner.x + 1, y, label, style;
-                         max_x = left_inner.x + left_inner.width - 1)
+            set_string!(
+                buf,
+                left_inner.x + 1,
+                y,
+                label,
+                style;
+                max_x = left_inner.x + left_inner.width - 1,
+            )
         end
 
         # Scroll indicators
@@ -270,13 +273,23 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
         row = 0  # relative row counter
 
         # "Depends on" header
-        set_string!(buf, right_inner.x + 1, right_inner.y + row,
-                   "Depends on ($(length(deps_list))):", tstyle(:accent, bold = true))
+        set_string!(
+            buf,
+            right_inner.x + 1,
+            right_inner.y + row,
+            "Depends on ($(length(deps_list))):",
+            tstyle(:accent, bold = true),
+        )
         row += 1
 
         if isempty(deps_list)
-            set_string!(buf, right_inner.x + 3, right_inner.y + row,
-                       "(none)", tstyle(:text_dim))
+            set_string!(
+                buf,
+                right_inner.x + 3,
+                right_inner.y + row,
+                "(none)",
+                tstyle(:text_dim),
+            )
             row += 1
         else
             for (i, dep) in enumerate(deps_list)
@@ -286,8 +299,14 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
                 ver = dep.version !== nothing ? " v$(dep.version)" : ""
                 line = connector * marker * dep.name * ver
                 style = dep.is_direct_dep ? tstyle(:primary) : tstyle(:text_dim)
-                set_string!(buf, right_inner.x + 3, right_inner.y + row, line, style;
-                           max_x = right_inner.x + right_inner.width - 1)
+                set_string!(
+                    buf,
+                    right_inner.x + 3,
+                    right_inner.y + row,
+                    line,
+                    style;
+                    max_x = right_inner.x + right_inner.width - 1,
+                )
                 row += 1
             end
         end
@@ -296,14 +315,24 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
 
         # "Used by" header
         if right_inner.y + row <= bottom(right_inner)
-            set_string!(buf, right_inner.x + 1, right_inner.y + row,
-                       "Used by ($(length(used_by))):", tstyle(:accent, bold = true))
+            set_string!(
+                buf,
+                right_inner.x + 1,
+                right_inner.y + row,
+                "Used by ($(length(used_by))):",
+                tstyle(:accent, bold = true),
+            )
             row += 1
 
             if isempty(used_by)
                 if right_inner.y + row <= bottom(right_inner)
-                    set_string!(buf, right_inner.x + 3, right_inner.y + row,
-                               "(none)", tstyle(:text_dim))
+                    set_string!(
+                        buf,
+                        right_inner.x + 3,
+                        right_inner.y + row,
+                        "(none)",
+                        tstyle(:text_dim),
+                    )
                 end
             else
                 for (i, dep) in enumerate(used_by)
@@ -313,18 +342,20 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
                     ver = dep.version !== nothing ? " v$(dep.version)" : ""
                     line = connector * marker * dep.name * ver
                     style = dep.is_direct_dep ? tstyle(:primary) : tstyle(:text_dim)
-                    set_string!(buf, right_inner.x + 3, right_inner.y + row, line, style;
-                               max_x = right_inner.x + right_inner.width - 1)
+                    set_string!(
+                        buf,
+                        right_inner.x + 3,
+                        right_inner.y + row,
+                        line,
+                        style;
+                        max_x = right_inner.x + right_inner.width - 1,
+                    )
                     row += 1
                 end
             end
         end
     else
-        render(
-            Block(title = "Details", border_style = tstyle(:border)),
-            cols[2],
-            buf,
-        )
+        render(Block(title = "Details", border_style = tstyle(:border)), cols[2], buf)
     end
 end
 
@@ -368,7 +399,8 @@ function handle_dependencies_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
     if st.show_graph && !isempty(m.installed.packages)
         if evt.key == :up || evt.key == :down
             delta = evt.key == :up ? -1 : 1
-            st.graph_selected = clamp(st.graph_selected + delta, 1, length(m.installed.packages))
+            st.graph_selected =
+                clamp(st.graph_selected + delta, 1, length(m.installed.packages))
             return true
         end
     end

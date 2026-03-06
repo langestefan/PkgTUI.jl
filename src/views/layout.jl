@@ -91,10 +91,7 @@ function push_toast!(
     icon::String = "",
     hint::String = "",
 )
-    push!(
-        m.toasts,
-        Toast(; message = message, style = style, icon = icon, hint = hint),
-    )
+    push!(m.toasts, Toast(; message = message, style = style, icon = icon, hint = hint))
 end
 
 """Dismiss the most recent toast notification."""
@@ -135,18 +132,14 @@ function render_toasts(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     # Clear the background behind the toast so underlying text doesn't bleed through
     bg_style = tstyle(:text)  # use default background
-    for cy in toast_rect.y:(toast_rect.y + toast_rect.height - 1)
-        for cx in toast_rect.x:(toast_rect.x + toast_rect.width - 1)
+    for cy = toast_rect.y:(toast_rect.y+toast_rect.height-1)
+        for cx = toast_rect.x:(toast_rect.x+toast_rect.width-1)
             set_char!(buf, cx, cy, ' ', bg_style)
         end
     end
 
     border_style = tstyle(toast.style, bold = true)
-    inner = render(
-        Block(border_style = border_style, box = BOX_DOUBLE),
-        toast_rect,
-        buf,
-    )
+    inner = render(Block(border_style = border_style, box = BOX_DOUBLE), toast_rect, buf)
 
     # Center the main message line (row 1 of inner, after top padding)
     msg_y = inner.y + 1

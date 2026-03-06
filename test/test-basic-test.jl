@@ -383,11 +383,7 @@ end
 @testitem "render dependencies tab" tags = [:view] begin
     using Tachikoma
     using UUIDs
-    using PkgTUI:
-        PkgTUIApp,
-        PackageRow,
-        build_dependency_tree,
-        render_dependencies_tab
+    using PkgTUI: PkgTUIApp, PackageRow, build_dependency_tree, render_dependencies_tab
 
     m = PkgTUIApp()
     area = Rect(1, 1, 100, 30)
@@ -665,10 +661,14 @@ end
     uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
     uuid_b = UUID("bbbbbbbb-0000-0000-0000-000000000002")
     m.installed.packages = [
-        PackageRow(name = "PkgA", uuid = uuid_a, version = "1.0",
-                   is_direct_dep = true, dependencies = [uuid_b]),
-        PackageRow(name = "PkgB", uuid = uuid_b, version = "2.0",
-                   is_direct_dep = false),
+        PackageRow(
+            name = "PkgA",
+            uuid = uuid_a,
+            version = "1.0",
+            is_direct_dep = true,
+            dependencies = [uuid_b],
+        ),
+        PackageRow(name = "PkgB", uuid = uuid_b, version = "2.0", is_direct_dep = false),
     ]
     m.deps.show_graph = true
     m.deps.graph_selected = 1
@@ -696,9 +696,8 @@ end
     # Graph mode (two-panel explorer)
     uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
     m.deps.show_graph = true
-    m.installed.packages = [
-        PackageRow(name = "GraphPkg", uuid = uuid_a, is_direct_dep = true),
-    ]
+    m.installed.packages =
+        [PackageRow(name = "GraphPkg", uuid = uuid_a, is_direct_dep = true)]
     m.deps.graph_selected = 1
 
     name = get_selected_dep_name(m.deps, m)
