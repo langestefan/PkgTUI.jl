@@ -701,3 +701,159 @@ end
     handle_installed_keys!(m, KeyEvent(:up))
     @test m.installed.filter_input.focused == true
 end
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Triage feature tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+@testitem "TriageState construction" tags=[:unit, :fast] begin
+    using PkgTUI: TriageState
+
+    tr = TriageState()
+    @test tr.show == false
+    @test tr.package_name == ""
+    @test tr.error_message == ""
+    @test tr.pkg_log == ""
+end
+
+@testitem "analyze_error suggestions" tags=[:unit, :fast] begin
+    using PkgTUI: analyze_error
+
+    # Compat error
+    suggestions = analyze_error("Error in add: Unsatisfiable requirements detected for JuMP", "JuMP")
+    @test any(s -> occursin("Compatibility", s), suggestions)
+    @test any(s -> occursin("retry", lowercase(s)) || occursin("Retry", s), suggestions)
+
+    # Not found error
+    suggestions = analyze_error("Error in add: Package does not exist", "FakePkg")
+    @test any(s -> occursin("not found", s), suggestions)
+
+    # Network error
+    suggestions = analyze_error("Error in add: DNS resolution failed timeout", "SomePkg")
+    @test any(s -> occursin("network", lowercase(s)), suggestions)
+
+    # Unknown error (fallback)
+    suggestions = analyze_error("Error in add: something weird happened", "Pkg")
+    @test any(s -> occursin("unexpected", lowercase(s)), suggestions)
+    @test any(s -> occursin("retry", lowercase(s)) || occursin("[r]", s), suggestions)
+end
+
+@testitem "build_triage_content! populates scroll pane" tags=[:unit] begin
+    using Tachikoma
+    using PkgTUI: TriageState, ProjectInfo, build_triage_content!
+
+    tr = TriageState()
+    tr.package_name = "FailPkg"
+    tr.error_message = "Error in add: Unsatisfiable requirements detected for package FailPkg"
+    tr.pkg_log = "some log output"
+
+    pi = ProjectInfo(
+        name="TestProject",
+        path="/tmp/test/Project.toml",
+        dep_count=5,
+    )
+
+    build_triage_content!(tr, pi)
+
+    # Scroll pane should have content
+    lines = tr.scroll_pane.content
+    @test length(lines) > 5
+    # Should contain package name, error, diagnostics, suggestions
+    combined = join(lines, "\n")
+    @test occursin("FailPkg", combined)
+    @test occursin("Unsatisfiable", combined)
+    @test occursin("Julia version", combined)
+    @test occursin("TestProject", combined)
+    @test occursin("Suggestions", combined)
+    @test occursin("Compatibility", combined)
+end
+
+@testitem "triage key handling" tags=[:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, TriageState, ProjectInfo, build_triage_content!,
+                  handle_triage_keys!
+
+    m = PkgTUIApp()
+    m.triage.show = true
+    m.triage.package_name = "TestPkg"
+    m.triage.error_message = "Error in add: some error"
+    build_triage_content!(m.triage, m.project_info)
+
+    # Scroll down
+    initial_offset = m.triage.scroll_pane.offset
+    handle_triage_keys!(m, KeyEvent(:down))
+    @test m.triage.scroll_pane.offset == initial_offset + 1
+
+    # Scroll up
+    handle_triage_keys!(m, KeyEvent(:up))
+    @test m.triage.scroll_pane.offset == initial_offset
+
+    # Page down
+    handle_triage_keys!(m, KeyEvent(:pagedown))
+    @test m.triage.scroll_pane.offset == initial_offset + 10
+
+    # Escape closes triage
+    handle_triage_keys!(m, KeyEvent(:escape))
+    @test m.triage.show == false
+end
+
+@testitem "triage overlay renders" tags=[:view] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, TriageState, ProjectInfo, build_triage_content!,
+                  render_triage_overlay
+
+    m = PkgTUIApp()
+    m.triage.show = true
+    m.triage.package_name = "FailPkg"
+    m.triage.error_message = "Error in add: Unsatisfiable requirements"
+    build_triage_content!(m.triage, m.project_info)
+
+    area = Rect(1, 1, 100, 40)
+    buf = Tachikoma.Buffer(area)
+
+    # Should not throw
+    render_triage_overlay(m, area, buf)
+    @test true
+end
+
+@testitem "registry t key opens triage for failed package" tags=[:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 3
+    m.registry.index_loaded = true
+    m.registry.results = [
+        RegistryPackage(name="FailPkg", latest_version="1.0.0"),
+        RegistryPackage(name="GoodPkg", latest_version="2.0.0"),
+    ]
+    m.registry.selected = 1
+
+    # Mark FailPkg as failed
+    push!(m.registry.failed_names, "FailPkg")
+    m.triage.package_name = "FailPkg"
+    m.triage.error_message = "Error in add: something failed"
+
+    # Press 't' — should open triage for FailPkg
+    consumed = handle_registry_keys!(m, KeyEvent('t'))
+    @test consumed == true
+    @test m.triage.show == true
+    @test m.triage.package_name == "FailPkg"
+end
+
+@testitem "registry t key ignored for non-failed package" tags=[:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 3
+    m.registry.index_loaded = true
+    m.registry.results = [
+        RegistryPackage(name="GoodPkg", latest_version="2.0.0"),
+    ]
+    m.registry.selected = 1
+
+    # Press 't' on a non-failed package — should not open triage
+    consumed = handle_registry_keys!(m, KeyEvent('t'))
+    @test m.triage.show == false
+end

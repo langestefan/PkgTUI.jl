@@ -101,14 +101,19 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         end
     end
 
-    # Action hints
-    render(StatusBar(
-        left=[
-            Span("  [Enter] Install ", tstyle(:accent)),
-            Span("[/] Focus search ", tstyle(:text_dim)),
-        ],
-        right=[],
-    ), left_rows[3], buf)
+    # Action hints — show [t]riage when a failed package is selected
+    selected_is_failed = !isempty(st.results) && st.selected >= 1 &&
+        st.selected <= length(st.results) &&
+        st.results[st.selected].name in st.failed_names
+
+    hint_spans = [
+        Span("  [Enter] Install ", tstyle(:accent)),
+        Span("[/] Focus search ", tstyle(:text_dim)),
+    ]
+    if selected_is_failed
+        push!(hint_spans, Span("[t]riage ", tstyle(:error)))
+    end
+    render(StatusBar(left=hint_spans, right=[]), left_rows[3], buf)
 
     # ── Right panel: detail ──
     detail_inner = render(Block(title="Package Details", border_style=tstyle(:border)),
@@ -237,6 +242,23 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                 focused=true
             )
             return true
+        elseif c == 't'
+            # Open triage for a failed package
+            if !isempty(st.results) && st.selected >= 1 && st.selected <= length(st.results)
+                pkg = st.results[st.selected]
+                if pkg.name in st.failed_names
+                    m.triage.package_name = pkg.name
+                    # Re-use stored error if available, otherwise generic
+                    if isempty(m.triage.error_message) || m.triage.package_name != pkg.name
+                        m.triage.error_message = "Error in add: installation failed for $(pkg.name)"
+                        m.triage.pkg_log = ""
+                    end
+                    build_triage_content!(m.triage, m.project_info)
+                    m.triage.show = true
+                    push_log!(m, "Triage window opened for $(pkg.name).")
+                    return true
+                end
+            end
         end
     elseif evt.key == :enter
         if !isempty(st.results) && st.selected >= 1 && st.selected <= length(st.results)

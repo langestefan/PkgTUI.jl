@@ -76,6 +76,10 @@ function Tachikoma.view(m::PkgTUIApp, f::Frame)
     if m.env_switching
         render_env_switcher(m, f.area, f.buffer)
     end
+
+    if m.triage.show
+        render_triage_overlay(m, f.area, f.buffer)
+    end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -91,6 +95,12 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
     # ── Modal handling (highest priority) ──
     if m.modal !== nothing
         handle_modal_keys!(m, evt)
+        return
+    end
+
+    # ── Triage overlay ──
+    if m.triage.show
+        handle_triage_keys!(m, evt)
         return
     end
 
@@ -233,6 +243,20 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         # Status bar: use clean message for errors
         if is_error && pkg_name !== nothing
             set_status!(m, "Failed to install $(pkg_name)", :error)
+            # Offer triage modal
+            pkg_log = result isa NamedTuple && hasproperty(result, :log) ? result.log : ""
+            m.triage.package_name = pkg_name
+            m.triage.error_message = msg
+            m.triage.pkg_log = pkg_log
+            m.modal = Modal(;
+                title="Install Failed",
+                message="$(pkg_name) failed to install. Open triage window to debug?",
+                confirm_label="Triage",
+                cancel_label="Dismiss",
+                selected=:confirm,
+            )
+            m.modal_action = :open_triage
+            m.modal_target = pkg_name
         elseif is_error
             set_status!(m, "Package install failed", :error)
         else
@@ -381,6 +405,10 @@ function execute_modal_action!(m::PkgTUIApp)
             result = remove_package(target, io)
             (result=result, log=String(take!(io)))
         end
+    elseif action == :open_triage
+        build_triage_content!(m.triage, m.project_info)
+        m.triage.show = true
+        push_log!(m, "Triage window opened for $target.")
     end
 end
 

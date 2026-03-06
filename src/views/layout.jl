@@ -115,6 +115,7 @@ function render_help_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
         "Registry Tab:",
         "  Enter        Install selected",
         "  /            Focus search",
+        "  t            Triage failed install",
         "",
         "Dependencies Tab:",
         "  g            Toggle tree/graph view",

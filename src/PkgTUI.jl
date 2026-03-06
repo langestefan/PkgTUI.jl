@@ -24,6 +24,7 @@ include("views/registry_explorer.jl")
 include("views/dependencies.jl")
 include("views/conflicts.jl")
 include("views/metrics_view.jl")
+include("views/triage.jl")
 
 # App orchestration (view, update!, init!, cleanup!)
 include("app.jl")

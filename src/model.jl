@@ -162,6 +162,15 @@ end
     sort_desc::Bool = true
 end
 
+"""State for the install failure triage overlay."""
+@kwdef mutable struct TriageState
+    show::Bool = false
+    package_name::String = ""
+    error_message::String = ""          # full verbose Pkg error
+    pkg_log::String = ""                # Pkg IO output during install
+    scroll_pane::ScrollPane = ScrollPane(String[]; following=false)
+end
+
 # ── Main application model ────────────────────────────────────────────────────
 
 """The top-level PkgTUI application model."""
@@ -194,6 +203,9 @@ end
     modal::Union{Modal, Nothing} = nothing
     modal_action::Union{Symbol, Nothing} = nothing
     modal_target::Union{String, Nothing} = nothing
+
+    # ── Triage overlay ──
+    triage::TriageState = TriageState()
 
     # ── Logging ──
     log_pane::ScrollPane = ScrollPane(String[]; following=true)
