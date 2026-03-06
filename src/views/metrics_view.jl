@@ -78,7 +78,8 @@ function render_metrics_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     render(
         StatusBar(
             left = [
-                Span("  [s]witch size/load ", tstyle(:accent)),
+                Span("  ↑↓ scroll ", tstyle(:text_dim)),
+                Span("[s]witch size/load ", tstyle(:accent)),
                 Span("[r]un profiling ", tstyle(:accent)),
             ],
             right = [
@@ -153,21 +154,67 @@ function render_metrics_table(st::MetricsState, area::Rect, buf::Buffer)
     end
     y += 1
 
+    # Available rows for data
+    visible_rows = inner.height - 2  # minus header + separator
+    total = length(sorted)
+
+    # Clamp scroll and selection
+    st.selected = clamp(st.selected, 1, max(1, total))
+    max_offset = max(0, total - visible_rows)
+    st.scroll_offset = clamp(st.scroll_offset, 0, max_offset)
+
+    # Ensure selected row is visible
+    if st.selected - 1 < st.scroll_offset
+        st.scroll_offset = st.selected - 1
+    elseif st.selected - 1 >= st.scroll_offset + visible_rows
+        st.scroll_offset = st.selected - visible_rows
+    end
+
     # Rows
-    for m in sorted
-        y > inner.y + inner.height - 1 && break
-        name_style = m.is_direct ? tstyle(:primary) : tstyle(:text_dim)
-        set_string!(buf, x, y, m.name, name_style)
-        set_string!(buf, x + 25, y, format_bytes(m.disk_size_bytes), tstyle(:text))
-        set_string!(buf, x + 38, y, format_time(m.compile_time_seconds), tstyle(:text))
+    for i in 1:visible_rows
+        idx = i + st.scroll_offset
+        idx > total && break
+        m = sorted[idx]
+        is_selected = idx == st.selected
+
+        name_style = if is_selected
+            tstyle(:accent, bold = true)
+        elseif m.is_direct
+            tstyle(:primary)
+        else
+            tstyle(:text_dim)
+        end
+        val_style = is_selected ? tstyle(:accent) : tstyle(:text)
+        type_style = if is_selected
+            tstyle(:accent, bold = true)
+        elseif m.is_direct
+            tstyle(:success)
+        else
+            tstyle(:text_dim)
+        end
+
+        # Selection indicator
+        prefix = is_selected ? "▶ " : "  "
+        set_string!(buf, x - 1, y, prefix, name_style)
+        set_string!(buf, x + 1, y, m.name, name_style)
+        set_string!(buf, x + 25, y, format_bytes(m.disk_size_bytes), val_style)
+        set_string!(buf, x + 38, y, format_time(m.compile_time_seconds), val_style)
         set_string!(
             buf,
             x + 48,
             y,
             m.is_direct ? "direct" : "indirect",
-            m.is_direct ? tstyle(:success) : tstyle(:text_dim),
+            type_style,
         )
         y += 1
+    end
+
+    # Scroll indicator
+    if total > visible_rows
+        pct = round(Int, 100.0 * (st.scroll_offset + visible_rows) / total)
+        pos_str = "$(min(pct, 100))% ($(total))"
+        set_string!(buf, inner.x + inner.width - length(pos_str) - 1,
+            inner.y + inner.height - 1, pos_str, tstyle(:text_dim))
     end
 end
 
@@ -231,6 +278,24 @@ function handle_metrics_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             end
             return true
         end
+    elseif evt.key == :up
+        st.selected = max(1, st.selected - 1)
+        return true
+    elseif evt.key == :down
+        st.selected = min(length(st.metrics), st.selected + 1)
+        return true
+    elseif evt.key == :pageup
+        st.selected = max(1, st.selected - 20)
+        return true
+    elseif evt.key == :pagedown
+        st.selected = min(length(st.metrics), st.selected + 20)
+        return true
+    elseif evt.key == :home
+        st.selected = 1
+        return true
+    elseif evt.key == :endd
+        st.selected = length(st.metrics)
+        return true
     end
 
     return false

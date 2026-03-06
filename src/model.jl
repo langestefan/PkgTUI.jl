@@ -173,6 +173,8 @@ end
     profile_progress::Float64 = 0.0
     sort_by::Symbol = :size   # :size, :compile, :name
     sort_desc::Bool = true
+    selected::Int = 1         # selected row in table
+    scroll_offset::Int = 0    # scroll offset for table
 end
 
 """State for the install failure triage overlay."""

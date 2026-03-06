@@ -318,44 +318,14 @@ end
 """
     run_precompile_profiling(io::IOBuffer) → Vector{Tuple{String, Float64}}
 
-Try `Pkg.precompile(; timing=true)` first.  When every package is already
-cached (the common case) that returns nothing, so we fall back to measuring
-**load times** in a fresh Julia subprocess.
-Returns [(name, seconds), ...] sorted by time descending.
+Measure **load times** for each direct dependency by loading it in a fresh
+Julia subprocess.  Returns [(name, seconds), ...] sorted by time descending.
+
+Note: we used to try `Pkg.precompile(; timing=true)` first, but it hangs
+when called from within a loaded app (reentrancy / lock issue).  The
+subprocess approach is more reliable and measures what users care about.
 """
 function run_precompile_profiling(io::IOBuffer)::Vector{Tuple{String,Float64}}
-    # ── Attempt 1: Pkg.precompile timing ──────────────────────────────────
-    buf = IOBuffer()
-    Pkg.precompile(; timing = true, io = buf)
-    raw = String(take!(buf))
-
-    timings = Tuple{String,Float64}[]
-    for line in split(raw, '\n')
-        # Actual format from Base.Precompilation:
-        #   "    388.7 ms  ✓ PackageName"
-        #   "  10625.5 ms  ✓ SciMLBase → SciMLBaseChainRulesCoreExt"
-        #   "    388.7 ms  ? PackageName"   (precompile error)
-        m = match(r"([\d.]+)\s+ms\s+[✓?]\s+(\S+)", line)
-        if m !== nothing
-            ms = parse(Float64, m.captures[1])
-            name = String(m.captures[2])
-            # Strip extension arrow notation: "Base → ExtName" → "ExtName"
-            if occursin(" → ", line)
-                ext_m = match(r"[✓?]\s+\S+\s+→\s+(\S+)", line)
-                if ext_m !== nothing
-                    name = String(ext_m.captures[1])
-                end
-            end
-            push!(timings, (name, ms / 1000.0))  # convert ms → seconds
-        end
-    end
-
-    if !isempty(timings)
-        sort!(timings; by = last, rev = true)
-        return timings
-    end
-
-    # ── Attempt 2: measure load times in a fresh subprocess ───────────────
     timings = _measure_load_times()
     sort!(timings; by = last, rev = true)
     return timings

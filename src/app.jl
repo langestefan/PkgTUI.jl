@@ -541,6 +541,11 @@ end
 function handle_task_error!(m::PkgTUIApp, id::Symbol, err::Exception)
     short_msg = "Task $id failed"
     push_log!(m, short_msg)
+    # Log the actual error for debugging
+    err_str = sprint(showerror, err)
+    for line in split(err_str, '\n')
+        push_log!(m, "  " * line)
+    end
     set_status!(m, short_msg, :error)
 
     # Reset loading states
