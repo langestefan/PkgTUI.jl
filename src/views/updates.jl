@@ -20,24 +20,39 @@ function render_updates_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     if has_conflicts
         # Layout: updates table | conflicts panel | hints
         conflict_height = min(length(m.conflicts.conflicts) + 4, 10)
-        rows = split_layout(Layout(Vertical, [Fill(), Fixed(conflict_height), Fixed(1)]), area)
+        rows =
+            split_layout(Layout(Vertical, [Fill(), Fixed(conflict_height), Fixed(1)]), area)
     else
         # Layout: updates table | hints
         rows = split_layout(Layout(Vertical, [Fill(), Fixed(1)]), area)
     end
 
     table_area = rows[1]
-    inner = render(Block(
-        title="Available Updates ($(length(st.updates)))",
-        border_style=tstyle(:border)
-    ), table_area, buf)
+    inner = render(
+        Block(
+            title = "Available Updates ($(length(st.updates)))",
+            border_style = tstyle(:border),
+        ),
+        table_area,
+        buf,
+    )
 
     if st.loading
-        set_string!(buf, inner.x + 2, inner.y + 1,
-            "Checking for updates...", tstyle(:text_dim, italic=true))
+        set_string!(
+            buf,
+            inner.x + 2,
+            inner.y + 1,
+            "Checking for updates...",
+            tstyle(:text_dim, italic = true),
+        )
     elseif isempty(st.updates)
-        set_string!(buf, inner.x + 2, inner.y + 1,
-            "All packages are up to date!", tstyle(:success))
+        set_string!(
+            buf,
+            inner.x + 2,
+            inner.y + 1,
+            "All packages are up to date!",
+            tstyle(:success),
+        )
     else
         # Header
         render_updates_header(inner, buf)
@@ -52,12 +67,24 @@ function render_updates_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             st.scroll_offset = max(0, st.selected - 1)
         end
 
-        for i in 1:visible
+        for i = 1:visible
             idx = i + st.scroll_offset
             idx > length(st.updates) && break
             info = st.updates[idx]
             y = inner.y + 1 + i
-            render_update_row(info, inner.x, y, inner.width, buf, idx == st.selected)
+            is_updating = (info.name in st.updating_names) || st.update_all_running
+            is_updated = info.name in st.updated_names
+            render_update_row(
+                info,
+                inner.x,
+                y,
+                inner.width,
+                buf,
+                idx == st.selected,
+                is_updating,
+                is_updated,
+                m.tick,
+            )
         end
     end
 
@@ -68,67 +95,118 @@ function render_updates_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     # Action hints
     # Conflict focus indicator
-    conflict_hint = has_conflicts ? [
-        Span("[c]onflicts ", st.conflicts_focused ? tstyle(:accent, bold=true) : tstyle(:text_dim)),
-    ] : Span[]
+    conflict_hint =
+        has_conflicts ?
+        [
+            Span(
+                "[c]onflicts ",
+                st.conflicts_focused ? tstyle(:accent, bold = true) : tstyle(:text_dim),
+            ),
+        ] : Span[]
 
-    render(StatusBar(
-        left=vcat([
-            Span("  [u]pdate selected ", tstyle(:accent)),
-            Span("[U]pdate all ", tstyle(:accent)),
-            Span("[d]ry-run ", tstyle(:accent)),
-            Span("[R]efresh ", tstyle(:text_dim)),
-        ], conflict_hint),
-        right=[],
-    ), rows[end], buf)
+    render(
+        StatusBar(
+            left = vcat(
+                [
+                    Span("  [u]pdate selected ", tstyle(:accent)),
+                    Span("[U]pdate all ", tstyle(:accent)),
+                    Span("[d]ry-run ", tstyle(:accent)),
+                    Span("[R]efresh ", tstyle(:text_dim)),
+                ],
+                conflict_hint,
+            ),
+            right = [],
+        ),
+        rows[end],
+        buf,
+    )
 end
 
 """Render updates table header."""
 function render_updates_header(area::Rect, buf::Buffer)
     y = area.y
-    style = tstyle(:title, bold=true)
+    style = tstyle(:title, bold = true)
     cx = area.x + 1
 
     set_string!(buf, cx, y, " ", style)
     set_string!(buf, cx + 2, y, "Package", style)
     set_string!(buf, cx + 25, y, "Current", style)
     set_string!(buf, cx + 38, y, "Latest", style)
-    set_string!(buf, cx + 51, y, "Blocked By", style)
+    set_string!(buf, cx + 51, y, "Status", style)
 
-    for x in area.x:(area.x + area.width - 1)
+    for x = area.x:(area.x+area.width-1)
         set_char!(buf, x, y + 1, '─', tstyle(:border))
     end
 end
 
 """Render a single update info row."""
-function render_update_row(info::UpdateInfo, x::Int, y::Int, width::Int,
-                            buf::Buffer, selected::Bool)
+function render_update_row(
+    info::UpdateInfo,
+    x::Int,
+    y::Int,
+    width::Int,
+    buf::Buffer,
+    selected::Bool,
+    is_updating::Bool = false,
+    is_updated::Bool = false,
+    tick::Int = 0,
+)
     cx = x + 1
 
     # Status indicator
     indicator = info.can_update ? "⌃" : "⌅"
-    ind_style = info.can_update ? tstyle(:success, bold=true) : tstyle(:warning, bold=true)
-    set_string!(buf, cx, y, indicator, selected ? tstyle(:accent, bold=true) : ind_style)
+    ind_style =
+        info.can_update ? tstyle(:success, bold = true) : tstyle(:warning, bold = true)
+    set_string!(buf, cx, y, indicator, selected ? tstyle(:accent, bold = true) : ind_style)
 
-    # Package name
-    name_style = selected ? tstyle(:accent, bold=true) : tstyle(:primary)
+    # Package name — green when updated
+    name_style = if is_updated
+        tstyle(:success, bold = selected)
+    elseif selected
+        tstyle(:accent, bold = true)
+    else
+        tstyle(:primary)
+    end
     set_string!(buf, cx + 2, y, info.name, name_style)
 
     # Current version
-    set_string!(buf, cx + 25, y, "v" * info.current_version,
-        selected ? tstyle(:accent) : tstyle(:text))
+    set_string!(
+        buf,
+        cx + 25,
+        y,
+        "v" * info.current_version,
+        selected ? tstyle(:accent) : tstyle(:text),
+    )
 
     # Latest version
-    latest = info.latest_compatible !== nothing ? info.latest_compatible :
-             info.latest_available !== nothing ? info.latest_available : "—"
+    latest =
+        info.latest_compatible !== nothing ? info.latest_compatible :
+        info.latest_available !== nothing ? info.latest_available : "—"
     latest_str = latest == "—" ? latest : "v" * latest
-    set_string!(buf, cx + 38, y, latest_str,
-        selected ? tstyle(:accent) : tstyle(:success))
+    set_string!(buf, cx + 38, y, latest_str, selected ? tstyle(:accent) : tstyle(:success))
 
-    # Blocker
-    if info.blocker !== nothing && cx + 51 + length(info.blocker) <= x + width
-        set_string!(buf, cx + 51, y, info.blocker,
-            selected ? tstyle(:accent) : tstyle(:error))
+    # Status / blocker column
+    status_x = cx + 51
+    if is_updating
+        spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        frame = mod(tick ÷ 4, length(spinner_chars)) + 1
+        set_string!(
+            buf,
+            status_x,
+            y,
+            "$(spinner_chars[frame]) Updating…",
+            tstyle(:warning, bold = true),
+        )
+    elseif is_updated
+        set_string!(buf, status_x, y, "Updated ✓", tstyle(:success))
+    elseif info.blocker !== nothing && status_x + length(info.blocker) <= x + width
+        set_string!(
+            buf,
+            status_x,
+            y,
+            info.blocker,
+            selected ? tstyle(:accent) : tstyle(:error),
+        )
     end
 
     # Selection indicator
@@ -142,11 +220,15 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
     st = m.updates_state
     rows = split_layout(Layout(Vertical, [Fill(), Fixed(1)]), area)
 
-    inner = render(Block(
-        title="Dry Run — Update Preview",
-        border_style=tstyle(:accent),
-        box=BOX_DOUBLE,
-    ), rows[1], buf)
+    inner = render(
+        Block(
+            title = "Dry Run — Update Preview",
+            border_style = tstyle(:accent),
+            box = BOX_DOUBLE,
+        ),
+        rows[1],
+        buf,
+    )
 
     if st.dry_run_output !== nothing
         lines = split(st.dry_run_output, '\n')
@@ -161,16 +243,19 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
                 tstyle(:text)
             end
             # Truncate long lines
-            display_line = length(line) > inner.width - 2 ?
-                line[1:inner.width-2] : line
+            display_line = length(line) > inner.width - 2 ? line[1:inner.width-2] : line
             set_string!(buf, inner.x + 1, y, display_line, style)
         end
     end
 
-    render(StatusBar(
-        left=[Span("  [Esc] Close dry-run preview", tstyle(:text_dim))],
-        right=[],
-    ), rows[2], buf)
+    render(
+        StatusBar(
+            left = [Span("  [Esc] Close dry-run preview", tstyle(:text_dim))],
+            right = [],
+        ),
+        rows[2],
+        buf,
+    )
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -211,34 +296,37 @@ function handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             if idx >= 1 && idx <= length(st.updates)
                 name = st.updates[idx].name
                 # Check if the package is pinned
-                pinned_pkg = findfirst(p -> p.name == name && p.is_pinned, m.installed.packages)
+                pinned_pkg =
+                    findfirst(p -> p.name == name && p.is_pinned, m.installed.packages)
                 if pinned_pkg !== nothing
                     pkg = m.installed.packages[pinned_pkg]
                     m.modal = Modal(;
-                        title="Package Pinned",
-                        message="'$name' is pinned to v$(something(pkg.version, "?")). Unpin and update?",
-                        confirm_label="Unpin & Update",
-                        cancel_label="Cancel",
-                        selected=:cancel
+                        title = "Package Pinned",
+                        message = "'$name' is pinned to v$(something(pkg.version, "?")). Unpin and update?",
+                        confirm_label = "Unpin & Update",
+                        cancel_label = "Cancel",
+                        selected = :cancel,
                     )
                     m.modal_action = :unpin_and_update
                     m.modal_target = name
                 else
                     push_log!(m, "Updating $name...")
+                    push!(st.updating_names, name)
                     spawn_task!(m.tq, :update_single) do
                         io = IOBuffer()
                         result = update_package(name, io)
-                        (result=result, log=String(take!(io)))
+                        (result = result, log = String(take!(io)), name = name)
                     end
                 end
             end
             return true
         elseif c == 'U'
             push_log!(m, "Updating all packages...")
+            st.update_all_running = true
             spawn_task!(m.tq, :update_all) do
                 io = IOBuffer()
                 result = update_all(io)
-                (result=result, log=String(take!(io)))
+                (result = result, log = String(take!(io)))
             end
             return true
         elseif c == 'd'

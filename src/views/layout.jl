@@ -12,7 +12,8 @@ function render_layout(m::PkgTUIApp, f::Frame)
     area = f.area
 
     # Main vertical layout: tabs | content | log | status
-    log_height = m.show_log ? 6 : 0
+    # Hide inline log pane when the full-screen Log tab is active
+    log_height = (m.show_log && m.active_tab != 6) ? 6 : 0
     constraints = if log_height > 0
         [Fixed(3), Fill(), Fixed(log_height), Fixed(1)]
     else
@@ -36,10 +37,12 @@ function render_layout(m::PkgTUIApp, f::Frame)
         render_dependencies_tab(m, content_area, buf)
     elseif m.active_tab == 5
         render_metrics_tab(m, content_area, buf)
+    elseif m.active_tab == 6
+        render_log_tab(m, content_area, buf)
     end
 
-    # ── Log pane ──
-    if m.show_log
+    # ── Log pane (not shown when Log tab is active) ──
+    if m.show_log && m.active_tab != 6
         log_area = rows[3]
         log_inner = render(Block(title="Log [l]", border_style=tstyle(:border)), log_area, buf)
         render(m.log_pane, log_inner, buf)
@@ -90,7 +93,7 @@ function render_help_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     help_lines = [
         "Global Keys:",
         "  q / Esc      Quit PkgTUI",
-        "  1-5          Switch tabs",
+        "  1-6          Switch tabs",
         "  Ctrl+E       Switch environment",
         "  l            Toggle log pane",
         "  ?            Toggle this help",
@@ -126,6 +129,12 @@ function render_help_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
         "Metrics Tab:",
         "  s            Switch size/compile view",
         "  r            Run profiling",
+        "",
+        "Log Tab:",
+        "  /            Search log",
+        "  c            Clear log",
+        "  G            Jump to bottom (follow)",
+        "  g            Jump to top",
     ]
 
     for (i, line) in enumerate(help_lines)

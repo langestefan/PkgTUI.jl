@@ -366,10 +366,15 @@ function _measure_load_times()::Vector{Tuple{String, Float64}}
     isempty(dep_names) && return Tuple{String, Float64}[]
 
     # Each subprocess measures a single package in isolation.
+    # Use a unique marker prefix so we can filter out noisy Pkg/CondaPkg output.
     script = raw"""
-    sym = Symbol(ARGS[1])
-    t = @elapsed Base.require(Main, sym)
-    println(ARGS[1], "\t", t)
+    try
+        sym = Symbol(ARGS[1])
+        t = @elapsed Base.require(Main, sym)
+        println("__PKGTUI_TIMING__\t", ARGS[1], "\t", t)
+    catch e
+        println("__PKGTUI_TIMING__\t", ARGS[1], "\t", 0.0)
+    end
     """
 
     julia_cmd = Base.julia_cmd()
@@ -378,11 +383,17 @@ function _measure_load_times()::Vector{Tuple{String, Float64}}
     results = asyncmap(dep_names; ntasks=4) do name
         try
             cmd = `$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`
-            output = strip(read(cmd, String))
-            parts = split(output, '\t')
-            if length(parts) == 2
-                secs = tryparse(Float64, parts[2])
-                secs !== nothing && return (String(parts[1]), secs)
+            output = read(cmd, String)
+            # Find our marker line in the (possibly noisy) output
+            for raw_line in split(output, '\n')
+                line = strip(String(raw_line))
+                if startswith(line, "__PKGTUI_TIMING__\t")
+                    parts = split(line, '\t')
+                    if length(parts) == 3
+                        secs = tryparse(Float64, parts[3])
+                        secs !== nothing && return (String(parts[2]), secs)
+                    end
+                end
             end
         catch
             # Subprocess failed for this package — skip

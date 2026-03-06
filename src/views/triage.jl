@@ -40,6 +40,7 @@ function render_triage_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     render(StatusBar(
         left=[
             Span("  ↑↓ scroll ", tstyle(:text_dim)),
+            Span("[o]utput ", tr.pkg_output_expanded ? tstyle(:success) : tstyle(:accent)),
             Span("[r]etry ", tstyle(:accent)),
             Span("[Esc] close ", tstyle(:text_dim)),
         ],
@@ -59,6 +60,15 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
     push!(lines, "  Package: $(tr.package_name)")
     push!(lines, "")
 
+    # ── Condensed Summary (most likely cause) ──
+    push!(lines, "  ╔══ Summary ══════════════════════════════════════╗")
+    summary = extract_error_summary(tr.error_message, tr.pkg_log, tr.package_name)
+    for s in summary
+        push!(lines, "  ║  " * s)
+    end
+    push!(lines, "  ╚═══════════════════════════════════════════════════╝")
+    push!(lines, "")
+
     # ── Error details ──
     push!(lines, "  Error Details")
     push!(lines, "  " * "─"^40)
@@ -76,7 +86,6 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
         if length(line) <= 80
             push!(lines, "  " * line)
         else
-            # Simple word-wrap
             remaining = line
             while length(remaining) > 80
                 idx = findlast(' ', remaining[1:80])
@@ -90,14 +99,20 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
         end
     end
 
-    # ── Pkg log output (if any) ──
+    # ── Pkg log output (collapsible) ──
     if !isempty(strip(tr.pkg_log))
         push!(lines, "")
-        push!(lines, "  Pkg Output")
-        push!(lines, "  " * "─"^40)
-        for raw_line in split(tr.pkg_log, '\n')
-            line = String(raw_line)
-            !isempty(strip(line)) && push!(lines, "  " * line)
+        if tr.pkg_output_expanded
+            push!(lines, "  Pkg Output  [o] collapse ▴")
+            push!(lines, "  " * "─"^40)
+            for raw_line in split(tr.pkg_log, '\n')
+                line = String(raw_line)
+                !isempty(strip(line)) && push!(lines, "  " * line)
+            end
+        else
+            n_lines = count(!isempty ∘ strip, split(tr.pkg_log, '\n'))
+            push!(lines, "  Pkg Output  [o] expand ▾  ($(n_lines) lines hidden)")
+            push!(lines, "  " * "─"^40)
         end
     end
 
@@ -129,6 +144,98 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
 
     # Build the scroll pane
     tr.scroll_pane = ScrollPane(lines; following=false)
+end
+
+"""
+    extract_error_summary(error_msg, pkg_log, pkg_name) → Vector{String}
+
+Parse the error and Pkg output to produce a short 2-4 line summary
+identifying the most likely root cause.
+"""
+function extract_error_summary(error_msg::String, pkg_log::String, pkg_name::String)::Vector{String}
+    combined = error_msg * "\n" * pkg_log
+    lower = lowercase(combined)
+    summary = String[]
+
+    # ── Unsatisfiable / compat conflicts ──
+    if occursin("unsatisfiable", lower) || occursin("resolve", lower) && occursin("compat", lower)
+        push!(summary, "Root cause: Dependency conflict")
+        # Try to extract the conflicting constraint
+        for line in split(combined, '\n')
+            stripped = strip(String(line))
+            if occursin("requires", lowercase(stripped)) ||
+               (occursin("compat", lowercase(stripped)) && occursin("[", stripped))
+                push!(summary, stripped)
+                length(summary) >= 4 && break
+            end
+        end
+        if length(summary) == 1
+            push!(summary, "Julia v$(VERSION) compat bounds may be too strict.")
+        end
+        return summary
+    end
+
+    # ── Package not found ──
+    if occursin("not found", lower) || occursin("does not exist", lower) ||
+       occursin("no registered package", lower)
+        push!(summary, "Root cause: Package not found in registry")
+        push!(summary, "'$(pkg_name)' may be misspelled or not registered.")
+        return summary
+    end
+
+    # ── Network / download failures ──
+    if occursin("network", lower) || occursin("dns", lower) ||
+       occursin("timeout", lower) || occursin("could not resolve host", lower)
+        push!(summary, "Root cause: Network error")
+        push!(summary, "Could not download package or registry data.")
+        return summary
+    end
+
+    # ── Permission errors ──
+    if occursin("permission denied", lower) || occursin("access denied", lower) ||
+       occursin("eacces", lower)
+        push!(summary, "Root cause: Permission denied")
+        push!(summary, "Check write access to ~/.julia/ depot.")
+        return summary
+    end
+
+    # ── Build / compile errors ──
+    if occursin("build error", lower) || occursin("precompile error", lower) ||
+       occursin("failed to precompile", lower)
+        push!(summary, "Root cause: Build/precompile failure")
+        # Try to find the actual error line
+        for line in split(combined, '\n')
+            stripped = strip(String(line))
+            if occursin("ERROR:", stripped)
+                push!(summary, stripped[1:min(80, length(stripped))])
+                length(summary) >= 4 && break
+            end
+        end
+        return summary
+    end
+
+    # ── Git errors ──
+    if occursin("git", lower) && (occursin("error", lower) || occursin("fatal", lower))
+        push!(summary, "Root cause: Git error")
+        push!(summary, "Registry or package repo could not be cloned/fetched.")
+        return summary
+    end
+
+    # ── Fallback: extract first ERROR: line ──
+    push!(summary, "Root cause: Install failed")
+    for line in split(combined, '\n')
+        stripped = strip(String(line))
+        if startswith(stripped, "ERROR:") || startswith(stripped, "error:")
+            msg = stripped[1:min(78, length(stripped))]
+            push!(summary, msg)
+            break
+        end
+    end
+    if length(summary) == 1
+        push!(summary, "See error details and Pkg output below.")
+    end
+
+    return summary
 end
 
 """
@@ -236,6 +343,12 @@ function handle_triage_keys!(m::PkgTUIApp, evt::KeyEvent)
             result = add_package(pkg_name, io)
             (result=result, log=String(take!(io)), name=pkg_name)
         end
+        return
+    end
+
+    if evt.key == :char && evt.char == 'o'
+        tr.pkg_output_expanded = !tr.pkg_output_expanded
+        build_triage_content!(tr, m.project_info)
         return
     end
 end

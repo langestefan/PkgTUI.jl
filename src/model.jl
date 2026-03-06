@@ -14,13 +14,13 @@ using UUIDs
 @kwdef mutable struct PackageRow
     name::String
     uuid::UUID
-    version::Union{String, Nothing} = nothing
+    version::Union{String,Nothing} = nothing
     is_direct_dep::Bool = false
     is_pinned::Bool = false
     is_tracking_path::Bool = false
     is_tracking_repo::Bool = false
     is_tracking_registry::Bool = false
-    source::Union{String, Nothing} = nothing
+    source::Union{String,Nothing} = nothing
     dependencies::Vector{UUID} = UUID[]
 end
 
@@ -28,19 +28,19 @@ end
 @kwdef mutable struct UpdateInfo
     name::String
     current_version::String
-    latest_compatible::Union{String, Nothing} = nothing
-    latest_available::Union{String, Nothing} = nothing
-    blocker::Union{String, Nothing} = nothing
+    latest_compatible::Union{String,Nothing} = nothing
+    latest_available::Union{String,Nothing} = nothing
+    blocker::Union{String,Nothing} = nothing
     can_update::Bool = true   # ⌃ = true, ⌅ = false
 end
 
 """A package found in the registry search."""
 @kwdef mutable struct RegistryPackage
     name::String
-    uuid::Union{UUID, Nothing} = nothing
-    latest_version::Union{String, Nothing} = nothing
-    repo::Union{String, Nothing} = nothing
-    description::Union{String, Nothing} = nothing
+    uuid::Union{UUID,Nothing} = nothing
+    latest_version::Union{String,Nothing} = nothing
+    repo::Union{String,Nothing} = nothing
+    description::Union{String,Nothing} = nothing
 end
 
 """Conflict holding a package back."""
@@ -49,7 +49,7 @@ end
     held_at::String
     latest::String
     blocked_by::String
-    compat_constraint::Union{String, Nothing} = nothing
+    compat_constraint::Union{String,Nothing} = nothing
 end
 
 """Metrics for a single dependency."""
@@ -62,11 +62,11 @@ end
 
 """Information about the active project/environment."""
 @kwdef mutable struct ProjectInfo
-    name::Union{String, Nothing} = nothing
-    uuid::Union{UUID, Nothing} = nothing
-    version::Union{String, Nothing} = nothing
+    name::Union{String,Nothing} = nothing
+    uuid::Union{UUID,Nothing} = nothing
+    version::Union{String,Nothing} = nothing
     is_package::Bool = false
-    path::Union{String, Nothing} = nothing
+    path::Union{String,Nothing} = nothing
     dep_count::Int = 0
     is_workspace::Bool = false
     workspace_projects::Vector{String} = String[]
@@ -95,12 +95,12 @@ end
 @kwdef mutable struct InstalledState
     packages::Vector{PackageRow} = PackageRow[]
     filtered::Vector{PackageRow} = PackageRow[]
-    filter_input::TextInput = TextInput(; label="  Filter: ", focused=false)
+    filter_input::TextInput = TextInput(; label = "  Filter: ", focused = false)
     selected::Int = 1
     scroll_offset::Int = 0
     show_indirect::Bool = true
     adding::Bool = false
-    add_input::TextInput = TextInput(; label="  Package name: ", focused=false)
+    add_input::TextInput = TextInput(; label = "  Package name: ", focused = false)
     loading::Bool = false
 end
 
@@ -110,9 +110,12 @@ end
     selected::Int = 1
     scroll_offset::Int = 0
     loading::Bool = false
-    dry_run_output::Union{String, Nothing} = nothing
+    dry_run_output::Union{String,Nothing} = nothing
     show_dry_run::Bool = false
     conflicts_focused::Bool = false  # true = keyboard focus on conflicts panel
+    updating_names::Set{String} = Set{String}()   # packages currently being updated
+    updated_names::Set{String} = Set{String}()     # packages successfully updated this session
+    update_all_running::Bool = false               # true while "Update all" is in progress
 end
 
 """State for the version picker overlay in the Registry tab."""
@@ -126,7 +129,7 @@ end
 
 """State for the Registry Explorer tab."""
 @kwdef mutable struct RegistryState
-    search_input::TextInput = TextInput(; label="  Search: ", focused=false)
+    search_input::TextInput = TextInput(; label = "  Search: ", focused = false)
     results::Vector{RegistryPackage} = RegistryPackage[]
     selected::Int = 1
     scroll_offset::Int = 0
@@ -135,7 +138,7 @@ end
     index_loaded::Bool = false
     search_timer_active::Bool = false
     detail_panel_focused::Bool = false
-    installing_name::Union{String, Nothing} = nothing  # name of package currently being installed
+    installing_name::Union{String,Nothing} = nothing  # name of package currently being installed
     installed_names::Set{String} = Set{String}()        # packages installed this session
     failed_names::Set{String} = Set{String}()            # packages that failed to install
     version_picker::VersionPickerState = VersionPickerState()
@@ -143,13 +146,13 @@ end
 
 """State for the Dependencies tab."""
 @kwdef mutable struct DependenciesState
-    tree_root::Union{TreeNode, Nothing} = nothing
-    tree_view::Union{TreeView, Nothing} = nothing
+    tree_root::Union{TreeNode,Nothing} = nothing
+    tree_view::Union{TreeView,Nothing} = nothing
     graph_nodes::Vector{GraphNode} = GraphNode[]
     graph_edges::Vector{GraphEdge} = GraphEdge[]
     show_graph::Bool = false
-    selected_node::Union{UUID, Nothing} = nothing
-    why_output::Union{String, Nothing} = nothing
+    selected_node::Union{UUID,Nothing} = nothing
+    why_output::Union{String,Nothing} = nothing
     loading::Bool = false
     graph_iterations::Int = 0
 end
@@ -178,7 +181,17 @@ end
     package_name::String = ""
     error_message::String = ""          # full verbose Pkg error
     pkg_log::String = ""                # Pkg IO output during install
-    scroll_pane::ScrollPane = ScrollPane(String[]; following=false)
+    scroll_pane::ScrollPane = ScrollPane(String[]; following = false)
+    pkg_output_expanded::Bool = false   # Pkg output collapsed by default
+end
+
+"""State for the full-screen Log tab."""
+@kwdef mutable struct LogState
+    scroll_offset::Int = 0
+    following::Bool = true              # auto-scroll to bottom
+    search_active::Bool = false
+    search_query::String = ""
+    search_input::TextInput = TextInput(; label="  Search: ", focused=false)
 end
 
 # ── Main application model ────────────────────────────────────────────────────
@@ -192,7 +205,8 @@ end
 
     # ── Navigation ──
     active_tab::Int = 1
-    tab_names::Vector{String} = ["Installed", "Updates", "Registry", "Dependencies", "Metrics"]
+    tab_names::Vector{String} =
+        ["Installed", "Updates", "Registry", "Dependencies", "Metrics", "Log"]
     show_help::Bool = false
 
     # ── Environment ──
@@ -208,17 +222,18 @@ end
     deps::DependenciesState = DependenciesState()
     conflicts::ConflictsState = ConflictsState()
     metrics::MetricsState = MetricsState()
+    log_state::LogState = LogState()
 
     # ── Modal / confirmation ──
-    modal::Union{Modal, Nothing} = nothing
-    modal_action::Union{Symbol, Nothing} = nothing
-    modal_target::Union{String, Nothing} = nothing
+    modal::Union{Modal,Nothing} = nothing
+    modal_action::Union{Symbol,Nothing} = nothing
+    modal_target::Union{String,Nothing} = nothing
 
     # ── Triage overlay ──
     triage::TriageState = TriageState()
 
     # ── Logging ──
-    log_pane::ScrollPane = ScrollPane(String[]; following=true)
+    log_pane::ScrollPane = ScrollPane(String[]; following = true)
     show_log::Bool = true
     status_message::String = ""
     status_style::Symbol = :text

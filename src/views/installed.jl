@@ -15,10 +15,14 @@ function render_installed_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     # ── Filter bar ──
     filter_area = rows[1]
-    filter_inner = render(Block(
-        title=st.show_indirect ? "Filter (showing all)" : "Filter (direct only)",
-        border_style=tstyle(:border)
-    ), filter_area, buf)
+    filter_inner = render(
+        Block(
+            title = st.show_indirect ? "Filter (showing all)" : "Filter (direct only)",
+            border_style = tstyle(:border),
+        ),
+        filter_area,
+        buf,
+    )
 
     if st.adding
         render(st.add_input, filter_inner, buf)
@@ -29,10 +33,11 @@ function render_installed_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     # ── Package table ──
     table_area = rows[2]
     packages = st.filtered
-    table_inner = render(Block(
-        title="Packages ($(length(packages)))",
-        border_style=tstyle(:border)
-    ), table_area, buf)
+    table_inner = render(
+        Block(title = "Packages ($(length(packages)))", border_style = tstyle(:border)),
+        table_area,
+        buf,
+    )
 
     # Build update lookup from updates state
     update_lookup = Dict{String,UpdateInfo}()
@@ -41,18 +46,29 @@ function render_installed_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     end
 
     if st.loading
-        set_string!(buf, table_inner.x + 2, table_inner.y + 1,
-            "Loading packages...", tstyle(:text_dim, italic=true))
+        set_string!(
+            buf,
+            table_inner.x + 2,
+            table_inner.y + 1,
+            "Loading packages...",
+            tstyle(:text_dim, italic = true),
+        )
     elseif isempty(packages)
-        set_string!(buf, table_inner.x + 2, table_inner.y + 1,
-            "No packages found.", tstyle(:text_dim))
+        set_string!(
+            buf,
+            table_inner.x + 2,
+            table_inner.y + 1,
+            "No packages found.",
+            tstyle(:text_dim),
+        )
     else
         # Header
         render_package_table_header(table_inner, buf)
 
         # Rows
         visible_height = table_inner.height - 2  # minus header + separator
-        st.scroll_offset = clamp(st.scroll_offset, 0, max(0, length(packages) - visible_height))
+        st.scroll_offset =
+            clamp(st.scroll_offset, 0, max(0, length(packages) - visible_height))
 
         # Auto-scroll to keep selection visible
         if st.selected > st.scroll_offset + visible_height
@@ -61,46 +77,62 @@ function render_installed_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             st.scroll_offset = max(0, st.selected - 1)
         end
 
-        for i in 1:visible_height
+        for i = 1:visible_height
             idx = i + st.scroll_offset
             idx > length(packages) && break
             pkg = packages[idx]
             y = table_inner.y + 1 + i
             is_selected = (idx == st.selected)
             upd = get(update_lookup, pkg.name, nothing)
-            render_package_row(pkg, table_inner.x, y, table_inner.width, buf, is_selected, upd)
+            render_package_row(
+                pkg,
+                table_inner.x,
+                y,
+                table_inner.width,
+                buf,
+                is_selected,
+                upd,
+            )
         end
     end
 
     # ── Action hints ──
     hints_area = rows[3]
     if st.adding
-        render(StatusBar(
-            left=[Span("  Enter to add, Esc to cancel", tstyle(:text_dim))],
-            right=[],
-        ), hints_area, buf)
+        render(
+            StatusBar(
+                left = [Span("  Enter to add, Esc to cancel", tstyle(:text_dim))],
+                right = [],
+            ),
+            hints_area,
+            buf,
+        )
     else
-        render(StatusBar(
-            left=[
-                Span("  [a]dd ", tstyle(:accent)),
-                Span("[r]emove ", tstyle(:accent)),
-                Span("[u]pdate ", tstyle(:accent)),
-                Span("[U]pdate all ", tstyle(:accent)),
-                Span("[p]in ", tstyle(:text_dim)),
-                Span("[f]ree ", tstyle(:text_dim)),
-            ],
-            right=[
-                Span("[/]filter ", tstyle(:text_dim)),
-                Span("[t]oggle indirect ", tstyle(:text_dim)),
-            ],
-        ), hints_area, buf)
+        render(
+            StatusBar(
+                left = [
+                    Span("  [a]dd ", tstyle(:accent)),
+                    Span("[r]emove ", tstyle(:accent)),
+                    Span("[u]pdate ", tstyle(:accent)),
+                    Span("[U]pdate all ", tstyle(:accent)),
+                    Span("[p]in ", tstyle(:text_dim)),
+                    Span("[f]ree ", tstyle(:text_dim)),
+                ],
+                right = [
+                    Span("[/]filter ", tstyle(:text_dim)),
+                    Span("[t]oggle indirect ", tstyle(:text_dim)),
+                ],
+            ),
+            hints_area,
+            buf,
+        )
     end
 end
 
 """Render the table header row."""
 function render_package_table_header(area::Rect, buf::Buffer)
     y = area.y
-    style = tstyle(:title, bold=true)
+    style = tstyle(:title, bold = true)
     col_name = area.x + 1
     col_ver = area.x + max(30, div(area.width, 3))
     col_type = col_ver + 14
@@ -118,15 +150,21 @@ function render_package_table_header(area::Rect, buf::Buffer)
     end
 
     # Separator line
-    for x in area.x:(area.x + area.width - 1)
+    for x = area.x:(area.x+area.width-1)
         set_char!(buf, x, y + 1, '─', tstyle(:border))
     end
 end
 
 """Render a single package row."""
-function render_package_row(pkg::PackageRow, x::Int, y::Int, width::Int, buf::Buffer,
-                             selected::Bool,
-                             update_info::Union{UpdateInfo, Nothing}=nothing)
+function render_package_row(
+    pkg::PackageRow,
+    x::Int,
+    y::Int,
+    width::Int,
+    buf::Buffer,
+    selected::Bool,
+    update_info::Union{UpdateInfo,Nothing} = nothing,
+)
     col_name = x + 1
     col_ver = x + max(30, div(width, 3))
     col_type = col_ver + 14
@@ -134,7 +172,7 @@ function render_package_row(pkg::PackageRow, x::Int, y::Int, width::Int, buf::Bu
     col_update = col_status + 10
 
     name_style = if selected
-        tstyle(:accent, bold=true)
+        tstyle(:accent, bold = true)
     elseif pkg.is_direct_dep
         tstyle(:primary)
     else
@@ -165,8 +203,13 @@ function render_package_row(pkg::PackageRow, x::Int, y::Int, width::Int, buf::Bu
         else
             "registry"
         end
-        set_string!(buf, col_status, y, status_str,
-            selected ? tstyle(:accent) : tstyle(:text_dim))
+        set_string!(
+            buf,
+            col_status,
+            y,
+            status_str,
+            selected ? tstyle(:accent) : tstyle(:text_dim),
+        )
     end
 
     # Update status column
@@ -174,12 +217,22 @@ function render_package_row(pkg::PackageRow, x::Int, y::Int, width::Int, buf::Bu
         if update_info.can_update
             ver = something(update_info.latest_compatible, "⬆")
             upd_str = "⬆ $ver"
-            set_string!(buf, col_update, y, upd_str,
-                selected ? tstyle(:accent) : tstyle(:success))
+            set_string!(
+                buf,
+                col_update,
+                y,
+                upd_str,
+                selected ? tstyle(:accent) : tstyle(:success),
+            )
         else
             upd_str = "⌅ held"
-            set_string!(buf, col_update, y, upd_str,
-                selected ? tstyle(:accent) : tstyle(:warning))
+            set_string!(
+                buf,
+                col_update,
+                y,
+                upd_str,
+                selected ? tstyle(:accent) : tstyle(:warning),
+            )
         end
     end
 end
@@ -201,7 +254,7 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         if evt.key == :escape
             st.adding = false
             set_text!(st.add_input, "")
-            st.add_input = TextInput(; label="  Package name: ", focused=false)
+            st.add_input = TextInput(; label = "  Package name: ", focused = false)
             return true
         elseif evt.key == :enter
             name = strip(text(st.add_input))
@@ -210,12 +263,12 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                 spawn_task!(m.tq, :add) do
                     io = IOBuffer()
                     result = add_package(String(name), io)
-                    (result=result, log=String(take!(io)))
+                    (result = result, log = String(take!(io)))
                 end
             end
             st.adding = false
             set_text!(st.add_input, "")
-            st.add_input = TextInput(; label="  Package name: ", focused=false)
+            st.add_input = TextInput(; label = "  Package name: ", focused = false)
             return true
         else
             handle_key!(st.add_input, evt)
@@ -227,25 +280,25 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
     if st.filter_input.focused
         if evt.key == :escape
             st.filter_input = TextInput(;
-                label="  Filter: ",
-                text=text(st.filter_input),
-                focused=false,
+                label = "  Filter: ",
+                text = text(st.filter_input),
+                focused = false,
             )
             apply_filter!(st)
             return true
         elseif evt.key == :enter
             st.filter_input = TextInput(;
-                label="  Filter: ",
-                text=text(st.filter_input),
-                focused=false
+                label = "  Filter: ",
+                text = text(st.filter_input),
+                focused = false,
             )
             return true
         elseif evt.key == :down
             # Move focus from filter input to package list
             st.filter_input = TextInput(;
-                label="  Filter: ",
-                text=text(st.filter_input),
-                focused=false,
+                label = "  Filter: ",
+                text = text(st.filter_input),
+                focused = false,
             )
             return true
         else
@@ -260,17 +313,17 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         c = evt.char
         if c == 'a'
             st.adding = true
-            st.add_input = TextInput(; label="  Package name: ", focused=true)
+            st.add_input = TextInput(; label = "  Package name: ", focused = true)
             return true
         elseif c == 'r'
             pkg = selected_package(st)
             if pkg !== nothing
                 m.modal = Modal(;
-                    title="Remove Package",
-                    message="Remove '$(pkg.name)' from the project?",
-                    confirm_label="Remove",
-                    cancel_label="Cancel",
-                    selected=:cancel
+                    title = "Remove Package",
+                    message = "Remove '$(pkg.name)' from the project?",
+                    confirm_label = "Remove",
+                    cancel_label = "Cancel",
+                    selected = :cancel,
                 )
                 m.modal_action = :remove
                 m.modal_target = pkg.name
@@ -281,30 +334,32 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             if pkg !== nothing
                 if pkg.is_pinned
                     m.modal = Modal(;
-                        title="Package Pinned",
-                        message="'$(pkg.name)' is pinned to v$(something(pkg.version, "?")). Unpin and update?",
-                        confirm_label="Unpin & Update",
-                        cancel_label="Cancel",
-                        selected=:cancel
+                        title = "Package Pinned",
+                        message = "'$(pkg.name)' is pinned to v$(something(pkg.version, "?")). Unpin and update?",
+                        confirm_label = "Unpin & Update",
+                        cancel_label = "Cancel",
+                        selected = :cancel,
                     )
                     m.modal_action = :unpin_and_update
                     m.modal_target = pkg.name
                 else
                     push_log!(m, "Updating $(pkg.name)...")
+                    push!(m.updates_state.updating_names, pkg.name)
                     spawn_task!(m.tq, :update_single) do
                         io = IOBuffer()
                         result = update_package(pkg.name, io)
-                        (result=result, log=String(take!(io)))
+                        (result = result, log = String(take!(io)), name = pkg.name)
                     end
                 end
             end
             return true
         elseif c == 'U'
             push_log!(m, "Updating all packages...")
+            m.updates_state.update_all_running = true
             spawn_task!(m.tq, :update_all) do
                 io = IOBuffer()
                 result = update_all(io)
-                (result=result, log=String(take!(io)))
+                (result = result, log = String(take!(io)))
             end
             return true
         elseif c == 'p'
@@ -314,7 +369,7 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                 spawn_task!(m.tq, :pin) do
                     io = IOBuffer()
                     result = pin_package(pkg.name, io)
-                    (result=result, log=String(take!(io)))
+                    (result = result, log = String(take!(io)))
                 end
             end
             return true
@@ -325,12 +380,12 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                 spawn_task!(m.tq, :free) do
                     io = IOBuffer()
                     result = free_package(pkg.name, io)
-                    (result=result, log=String(take!(io)))
+                    (result = result, log = String(take!(io)))
                 end
             end
             return true
         elseif c == '/'
-            st.filter_input = TextInput(; label="  Filter: ", focused=true)
+            st.filter_input = TextInput(; label = "  Filter: ", focused = true)
             return true
         elseif c == 't'
             st.show_indirect = !st.show_indirect
@@ -341,9 +396,9 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         if st.selected <= 1
             # At top of list — move focus back to filter input
             st.filter_input = TextInput(;
-                label="  Filter: ",
-                text=text(st.filter_input),
-                focused=true,
+                label = "  Filter: ",
+                text = text(st.filter_input),
+                focused = true,
             )
         else
             st.selected = st.selected - 1
@@ -369,11 +424,11 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         pkg = selected_package(st)
         if pkg !== nothing
             m.modal = Modal(;
-                title="Remove Package",
-                message="Remove '$(pkg.name)' from the project?",
-                confirm_label="Remove",
-                cancel_label="Cancel",
-                selected=:cancel
+                title = "Remove Package",
+                message = "Remove '$(pkg.name)' from the project?",
+                confirm_label = "Remove",
+                cancel_label = "Cancel",
+                selected = :cancel,
             )
             m.modal_action = :remove
             m.modal_target = pkg.name
@@ -387,7 +442,7 @@ end
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 """Get the currently selected package, or nothing."""
-function selected_package(st::InstalledState)::Union{PackageRow, Nothing}
+function selected_package(st::InstalledState)::Union{PackageRow,Nothing}
     if st.selected >= 1 && st.selected <= length(st.filtered)
         return st.filtered[st.selected]
     end

@@ -38,7 +38,7 @@ function Tachikoma.init!(m::PkgTUIApp, terminal::Tachikoma.Terminal)
     end
 
     # Auto-refresh timer: check for updates every 5 minutes
-    spawn_timer!(m.tq, :auto_refresh, 300.0; repeat=true)
+    spawn_timer!(m.tq, :auto_refresh, 300.0; repeat = true)
 
     push_log!(m, "Loading environment data...")
 end
@@ -142,6 +142,8 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
         handle_dependencies_keys!(m, evt)
     elseif m.active_tab == 5
         handle_metrics_keys!(m, evt)
+    elseif m.active_tab == 6
+        handle_log_keys!(m, evt)
     else
         false
     end
@@ -159,7 +161,7 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
         elseif c == 'l'
             m.show_log = !m.show_log
             return
-        elseif c in ('1', '2', '3', '4', '5')
+        elseif c in ('1', '2', '3', '4', '5', '6')
             new_tab = Int(c - '0')
             m.active_tab = new_tab
             # Auto-refresh updates when switching to Updates tab
@@ -170,9 +172,9 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
             if new_tab == 3
                 st = m.registry
                 st.search_input = TextInput(;
-                    label="  Search: ",
-                    text=text(st.search_input),
-                    focused=true
+                    label = "  Search: ",
+                    text = text(st.search_input),
+                    focused = true,
                 )
             end
             return
@@ -203,8 +205,11 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
 
     if evt.id == :fetch_project
         m.project_info = evt.value::ProjectInfo
-        push_log!(m, "Environment: $(something(m.project_info.name, "unnamed")) " *
-                     "($(m.project_info.dep_count) deps)")
+        push_log!(
+            m,
+            "Environment: $(something(m.project_info.name, "unnamed")) " *
+            "($(m.project_info.dep_count) deps)",
+        )
 
     elseif evt.id == :fetch_installed
         packages = evt.value::Vector{PackageRow}
@@ -218,13 +223,16 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         if !isempty(packages)
             tree_root = build_dependency_tree(packages)
             m.deps.tree_root = tree_root
-            m.deps.tree_view = TreeView(tree_root; block=Block())
+            m.deps.tree_view = TreeView(tree_root; block = Block())
         end
 
     elseif evt.id == :build_registry_index
         m.registry.registry_index = evt.value::Vector{RegistryPackage}
         m.registry.index_loaded = true
-        push_log!(m, "Registry index: $(length(m.registry.registry_index)) packages indexed.")
+        push_log!(
+            m,
+            "Registry index: $(length(m.registry.registry_index)) packages indexed.",
+        )
         # Show initial results (top packages)
         do_registry_search!(m)
 
@@ -245,7 +253,8 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         result = evt.value
         msg = result isa NamedTuple ? result.result : string(result)
         is_error = startswith(msg, "Error")
-        pkg_name = result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
+        pkg_name =
+            result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
 
         # Log: short message only (errors are too verbose for the log pane)
         if is_error && pkg_name !== nothing
@@ -275,11 +284,11 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             m.triage.error_message = msg
             m.triage.pkg_log = pkg_log
             m.modal = Modal(;
-                title="Install Failed",
-                message="$(pkg_name) failed to install. Open triage window to debug?",
-                confirm_label="Triage",
-                cancel_label="Dismiss",
-                selected=:confirm,
+                title = "Install Failed",
+                message = "$(pkg_name) failed to install. Open triage window to debug?",
+                confirm_label = "Triage",
+                cancel_label = "Dismiss",
+                selected = :confirm,
             )
             m.modal_action = :open_triage
             m.modal_target = pkg_name
@@ -296,7 +305,8 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         push_log!(m, msg)
         set_status!(m, msg, :success)
         # Clear the removed package from installed_names so registry no longer shows "Installed"
-        pkg_name = result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
+        pkg_name =
+            result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
         if pkg_name !== nothing
             delete!(m.registry.installed_names, pkg_name)
         end
@@ -307,6 +317,24 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         msg = result isa NamedTuple ? result.result : string(result)
         push_log!(m, msg)
         set_status!(m, msg, :success)
+
+        # Track updated package(s) for progress/success indicators
+        if evt.id == :update_single || evt.id == :unpin_and_update
+            pkg_name =
+                result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
+            if pkg_name !== nothing
+                delete!(m.updates_state.updating_names, pkg_name)
+                push!(m.updates_state.updated_names, pkg_name)
+            end
+        elseif evt.id == :update_all
+            m.updates_state.update_all_running = false
+            # Mark all packages in the updates list as updated
+            for info in m.updates_state.updates
+                push!(m.updates_state.updated_names, info.name)
+            end
+            empty!(m.updates_state.updating_names)
+        end
+
         refresh_all!(m)
 
     elseif evt.id == :pin || evt.id == :free
@@ -317,9 +345,13 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         refresh_all!(m)
 
     elseif evt.id == :fetch_outdated
-        updates, raw = evt.value::Tuple{Vector{UpdateInfo}, String}
+        updates, raw = evt.value::Tuple{Vector{UpdateInfo},String}
         m.updates_state.updates = updates
         m.updates_state.loading = false
+        # Clear stale progress/success state after refresh
+        empty!(m.updates_state.updating_names)
+        m.updates_state.update_all_running = false
+        # Keep updated_names so recently-updated packages still show ✓ until they disappear from the list
         m.conflicts.conflicts = extract_conflicts(updates)
         push_log!(m, "Found $(length(updates)) packages with updates available.")
         set_status!(m, "$(length(updates)) updates available", :warning)
@@ -351,7 +383,7 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         end
 
     elseif evt.id == :compile_profile
-        timings = evt.value::Vector{Tuple{String, Float64}}
+        timings = evt.value::Vector{Tuple{String,Float64}}
         # Merge compile/load times into existing metrics
         timing_map = Dict(name => secs for (name, secs) in timings)
         for m_item in m.metrics.metrics
@@ -403,11 +435,11 @@ function handle_modal_keys!(m::PkgTUIApp, evt::KeyEvent)
         # Toggle between confirm/cancel
         if m.modal !== nothing
             m.modal = Modal(;
-                title=m.modal.title,
-                message=m.modal.message,
-                confirm_label=m.modal.confirm_label,
-                cancel_label=m.modal.cancel_label,
-                selected=m.modal.selected == :confirm ? :cancel : :confirm,
+                title = m.modal.title,
+                message = m.modal.message,
+                confirm_label = m.modal.confirm_label,
+                cancel_label = m.modal.cancel_label,
+                selected = m.modal.selected == :confirm ? :cancel : :confirm,
             )
         end
         return
@@ -434,17 +466,18 @@ function execute_modal_action!(m::PkgTUIApp)
         spawn_task!(m.tq, :remove) do
             io = IOBuffer()
             result = remove_package(target, io)
-            (result=result, log=String(take!(io)), name=target)
+            (result = result, log = String(take!(io)), name = target)
         end
     elseif action == :unpin_and_update
         push_log!(m, "Unpinning and updating $target...")
+        push!(m.updates_state.updating_names, target)
         spawn_task!(m.tq, :unpin_and_update) do
             io = IOBuffer()
             free_package(target, io)
             io2 = IOBuffer()
             result = update_package(target, io2)
             log = String(take!(io)) * String(take!(io2))
-            (result=result, log=log)
+            (result = result, log = log, name = target)
         end
     elseif action == :open_triage
         build_triage_content!(m.triage, m.project_info)
@@ -519,6 +552,11 @@ function handle_task_error!(m::PkgTUIApp, id::Symbol, err::Exception)
         m.metrics.profiling = false
     elseif id == :add
         m.registry.installing_name = nothing
+    elseif id in (:update_single, :unpin_and_update)
+        empty!(m.updates_state.updating_names)
+    elseif id == :update_all
+        m.updates_state.update_all_running = false
+        empty!(m.updates_state.updating_names)
     end
 end
 
@@ -553,7 +591,7 @@ Launch the PkgTUI terminal interface.
 - `project`: Path to a Julia project to activate. Defaults to the current active environment.
 - `fps`: Frames per second for the TUI render loop (default: 30).
 """
-function pkgtui(; project::Union{String, Nothing}=nothing, fps::Int=30)
+function pkgtui(; project::Union{String,Nothing} = nothing, fps::Int = 30)
     if project !== nothing
         Pkg.activate(project)
     elseif haskey(ENV, "JULIA_LOAD_PATH")
@@ -567,5 +605,5 @@ function pkgtui(; project::Union{String, Nothing}=nothing, fps::Int=30)
             Pkg.activate()
         end
     end
-    app(PkgTUIApp(); fps=fps, default_bindings=true)
+    app(PkgTUIApp(); fps = fps, default_bindings = true)
 end
