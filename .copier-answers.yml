@@ -1,0 +1,13 @@
+# Changes here will be overwritten by Copier
+AddPrecommitUpdateCI: true
+Authors: Stefan de Lange <langestefan@msn.com>
+JuliaMinVersion: '1.10'
+License: MIT
+LicenseCopyrightHolders: Stefan de Lange
+PackageName: PkgTUI
+PackageOwner: langestefan
+PackageUUID: 54278dea-1893-5142-a07c-601f49d9aabd
+StrategyConfirmIncluded: false
+StrategyLevel: 3
+StrategyReviewExcluded: true
+_src_path: /home/langestefan/.julia/packages/BestieTemplate/fOzc4

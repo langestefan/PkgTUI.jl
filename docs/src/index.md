@@ -1,0 +1,20 @@
+```@meta
+CurrentModule = PkgTUI
+```
+
+# PkgTUI
+
+Documentation for [PkgTUI](https://github.com/langestefan/PkgTUI.jl).
+
+## Contributors
+
+```@raw html
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+```
