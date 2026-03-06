@@ -71,19 +71,6 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
     push!(lines, "  Package: $(tr.package_name)")
     push!(lines, "")
 
-    # ── Condensed Summary (most likely cause) ──
-    box_header = "  ╔══ Summary ══════════════════════════════════════╗"
-    box_inner_w = length(box_header) - 5  # subtract "  ║  " prefix (content starts at col 6)
-    push!(lines, box_header)
-    summary = extract_error_summary(tr.error_message, tr.pkg_log, tr.package_name)
-    for s in summary
-        # Truncate long lines to fit inside the summary box
-        display_s = length(s) > box_inner_w ? s[1:prevind(s, box_inner_w)] * "…" : s
-        push!(lines, "  ║  " * display_s)
-    end
-    push!(lines, "  ╚═══════════════════════════════════════════════════╝")
-    push!(lines, "")
-
     # ── Error details (collapsible) ──
     # Combine error message + pkg log into one collapsible section
     error_text = tr.error_message
