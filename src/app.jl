@@ -374,12 +374,12 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         metrics = evt.value::Vector{PackageMetrics}
         m.metrics.metrics = metrics
         m.metrics.profile_progress = 0.5
-        push_log!(m, "Disk sizes measured. Starting compile profiling...")
+        pkg_names = [m_item.name for m_item in metrics]
+        push_log!(m, "Disk sizes measured ($(length(metrics)) pkgs). Profiling load times for $(length(pkg_names)) packages...")
 
-        # Now run compile profiling
+        # Now run compile profiling for ALL packages in the metrics list
         spawn_task!(m.tq, :compile_profile) do
-            io = IOBuffer()
-            run_precompile_profiling(io)
+            run_precompile_profiling(pkg_names)
         end
 
     elseif evt.id == :compile_profile
@@ -391,11 +391,12 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         end
         m.metrics.profiling = false
         m.metrics.profile_progress = 1.0
+        timed_count = count(t -> t[2] > 0.0, timings)
         if isempty(timings)
             push_log!(m, "No timing data could be collected.")
             set_status!(m, "Profiling complete (no timing data)", :warning)
         else
-            push_log!(m, "Profiling complete. $(length(timings)) packages timed.")
+            push_log!(m, "Profiling complete. $(length(timings)) packages measured, $(timed_count) with load times > 0.")
             set_status!(m, "Profiling complete", :success)
         end
 

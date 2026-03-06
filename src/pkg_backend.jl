@@ -316,36 +316,38 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    run_precompile_profiling(io::IOBuffer) → Vector{Tuple{String, Float64}}
+    run_precompile_profiling(pkg_names::Vector{String}) → Vector{Tuple{String, Float64}}
 
-Measure **load times** for each direct dependency by loading it in a fresh
+Measure **load times** for the given packages by loading each in a fresh
 Julia subprocess.  Returns [(name, seconds), ...] sorted by time descending.
 
-Note: we used to try `Pkg.precompile(; timing=true)` first, but it hangs
-when called from within a loaded app (reentrancy / lock issue).  The
-subprocess approach is more reliable and measures what users care about.
+When `pkg_names` is empty, falls back to direct project dependencies.
 """
-function run_precompile_profiling(io::IOBuffer)::Vector{Tuple{String,Float64}}
-    timings = _measure_load_times()
+function run_precompile_profiling(pkg_names::Vector{String})::Vector{Tuple{String,Float64}}
+    proj = Pkg.project()
+    proj_dir = proj.path !== nothing ? dirname(proj.path) : nothing
+    proj_dir === nothing && return Tuple{String,Float64}[]
+
+    names = if isempty(pkg_names)
+        collect(keys(proj.dependencies))
+    else
+        pkg_names
+    end
+    isempty(names) && return Tuple{String,Float64}[]
+
+    timings = _measure_load_times(names, proj_dir)
     sort!(timings; by = last, rev = true)
     return timings
 end
 
 """
-    _measure_load_times() → Vector{Tuple{String, Float64}}
+    _measure_load_times(names, proj_dir) → Vector{Tuple{String, Float64}}
 
 Spawn a separate Julia subprocess **per package** so that shared transitive
-dependencies don't deflate subsequent measurements.  Runs up to 4 subprocesses
+dependencies don't deflate subsequent measurements.  Runs up to 8 subprocesses
 in parallel via `asyncmap` for speed.
 """
-function _measure_load_times()::Vector{Tuple{String,Float64}}
-    proj = Pkg.project()
-    proj_dir = proj.path !== nothing ? dirname(proj.path) : nothing
-    proj_dir === nothing && return Tuple{String,Float64}[]
-
-    dep_names = collect(keys(proj.dependencies))
-    isempty(dep_names) && return Tuple{String,Float64}[]
-
+function _measure_load_times(names::Vector{String}, proj_dir::AbstractString)::Vector{Tuple{String,Float64}}
     # Each subprocess measures a single package in isolation.
     # Use a unique marker prefix so we can filter out noisy Pkg/CondaPkg output.
     script = raw"""
@@ -360,8 +362,8 @@ function _measure_load_times()::Vector{Tuple{String,Float64}}
 
     julia_cmd = Base.julia_cmd()
 
-    # Launch one subprocess per package, up to 4 concurrently.
-    results = asyncmap(dep_names; ntasks = 4) do name
+    # Launch one subprocess per package, up to 8 concurrently.
+    results = asyncmap(names; ntasks = min(8, length(names))) do name
         try
             cmd = `$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`
             output = read(cmd, String)
