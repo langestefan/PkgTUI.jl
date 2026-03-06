@@ -105,7 +105,23 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
         return
     end
 
-    # ── Global keys ──
+    # ── Tab-specific handlers (higher priority for escape in input modes) ──
+    consumed = if m.active_tab == 1
+        handle_installed_keys!(m, evt)
+    elseif m.active_tab == 2
+        handle_updates_keys!(m, evt)
+    elseif m.active_tab == 3
+        handle_registry_keys!(m, evt)
+    elseif m.active_tab == 4
+        handle_dependencies_keys!(m, evt)
+    elseif m.active_tab == 5
+        handle_metrics_keys!(m, evt)
+    else
+        false
+    end
+    consumed && return
+
+    # ── Global keys (only if tab handler didn't consume) ──
     if evt.key == :char
         c = evt.char
         if c == 'q'
@@ -118,7 +134,12 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
             m.show_log = !m.show_log
             return
         elseif c in ('1', '2', '3', '4', '5')
-            m.active_tab = Int(c - '0')
+            new_tab = Int(c - '0')
+            m.active_tab = new_tab
+            # Auto-refresh updates when switching to Updates tab
+            if new_tab == 2 && isempty(m.updates_state.updates) && !m.updates_state.loading
+                refresh_updates!(m)
+            end
             return
         end
     elseif evt.key == :escape
@@ -127,19 +148,6 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
     elseif evt.key == :ctrl && evt.char == 'e'
         start_env_switcher!(m)
         return
-    end
-
-    # ── Tab-specific handlers ──
-    if m.active_tab == 1
-        handle_installed_keys!(m, evt)
-    elseif m.active_tab == 2
-        handle_updates_keys!(m, evt)
-    elseif m.active_tab == 3
-        handle_registry_keys!(m, evt)
-    elseif m.active_tab == 4
-        handle_dependencies_keys!(m, evt)
-    elseif m.active_tab == 5
-        handle_metrics_keys!(m, evt)
     end
 end
 

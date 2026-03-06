@@ -15,8 +15,16 @@ function render_updates_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         return
     end
 
-    # Layout: table | action hints
-    rows = split_layout(Layout(Vertical, [Fill(), Fixed(1)]), area)
+    # If there are conflicts, split the area to show both
+    has_conflicts = !isempty(m.conflicts.conflicts)
+    if has_conflicts
+        # Layout: updates table | conflicts panel | hints
+        conflict_height = min(length(m.conflicts.conflicts) + 4, 10)
+        rows = split_layout(Layout(Vertical, [Fill(), Fixed(conflict_height), Fixed(1)]), area)
+    else
+        # Layout: updates table | hints
+        rows = split_layout(Layout(Vertical, [Fill(), Fixed(1)]), area)
+    end
 
     table_area = rows[1]
     inner = render(Block(
@@ -53,6 +61,11 @@ function render_updates_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         end
     end
 
+    # Conflicts panel (if any)
+    if has_conflicts
+        render_conflicts_panel(m, rows[2], buf)
+    end
+
     # Action hints
     render(StatusBar(
         left=[
@@ -62,7 +75,7 @@ function render_updates_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             Span("[R]efresh ", tstyle(:text_dim)),
         ],
         right=[],
-    ), rows[2], buf)
+    ), rows[end], buf)
 end
 
 """Render updates table header."""
