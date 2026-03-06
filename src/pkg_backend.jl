@@ -330,7 +330,10 @@ metric.
 the results passed in here, because this function typically runs inside
 a `spawn_task!` where the Pkg project state may not be available.
 """
-function run_precompile_profiling(proj_dir::AbstractString, dep_names::Vector{String})::Vector{Tuple{String,Float64}}
+function run_precompile_profiling(
+    proj_dir::AbstractString,
+    dep_names::Vector{String},
+)::Vector{Tuple{String,Float64}}
     isempty(dep_names) && return Tuple{String,Float64}[]
 
     timings = _measure_load_times(dep_names, proj_dir)
@@ -345,7 +348,10 @@ Spawn a separate Julia subprocess **per package** so that shared transitive
 dependencies don't deflate subsequent measurements.  Runs up to 8 subprocesses
 in parallel via `asyncmap` for speed.
 """
-function _measure_load_times(names::Vector{String}, proj_dir::AbstractString)::Vector{Tuple{String,Float64}}
+function _measure_load_times(
+    names::Vector{String},
+    proj_dir::AbstractString,
+)::Vector{Tuple{String,Float64}}
     # Each subprocess measures a single package in isolation.
     # Use a unique marker prefix so we can filter out noisy Pkg/CondaPkg output.
     # Use -1.0 as sentinel for packages that fail to load (to distinguish from
@@ -378,8 +384,11 @@ function _measure_load_times(names::Vector{String}, proj_dir::AbstractString)::V
     # reads stdout via `read(cmd, String)`, so stderr is never drained.
     results = asyncmap(names; ntasks = min(8, length(names))) do name
         try
-            raw_cmd = setenv(`$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`, clean_env)
-            cmd = pipeline(raw_cmd; stderr=devnull)
+            raw_cmd = setenv(
+                `$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`,
+                clean_env,
+            )
+            cmd = pipeline(raw_cmd; stderr = devnull)
             output = read(cmd, String)
             # Find our marker line in the (possibly noisy) output
             for raw_line in split(output, '\n')
@@ -500,10 +509,10 @@ function build_graph_layout(
     edges = GraphEdge[]
     uuid_set = Set(p.uuid for p in packages)
 
-    # Create nodes with random initial positions
+    # Create nodes with random initial positions (tightly packed around center)
     for (i, pkg) in enumerate(packages)
         angle = 2π * i / length(packages)
-        r = 30.0 + 10.0 * rand()
+        r = 8.0 + 4.0 * rand()
         push!(
             nodes,
             GraphNode(
@@ -545,13 +554,13 @@ function step_force_layout!(
 
     uuid_idx = Dict(node.uuid => i for (i, node) in enumerate(nodes))
 
-    # Repulsive forces between all node pairs
-    repulsion = 500.0
+    # Repulsive forces between all node pairs (low to keep graph compact)
+    repulsion = 80.0
     for i = 1:n
         for j = (i+1):n
             dx = nodes[i].x - nodes[j].x
             dy = nodes[i].y - nodes[j].y
-            dist = max(sqrt(dx^2 + dy^2), 0.1)
+            dist = max(sqrt(dx^2 + dy^2), 0.5)
             force = repulsion / dist^2
             fx = force * dx / dist
             fy = force * dy / dist
@@ -562,8 +571,9 @@ function step_force_layout!(
         end
     end
 
-    # Attractive forces along edges
-    attraction = 0.01
+    # Attractive forces along edges (strong to pull connected nodes together)
+    attraction = 0.08
+    ideal_dist = 6.0  # target distance between connected nodes
     for edge in edges
         i = get(uuid_idx, edge.from, 0)
         j = get(uuid_idx, edge.to, 0)
@@ -571,7 +581,7 @@ function step_force_layout!(
         dx = nodes[j].x - nodes[i].x
         dy = nodes[j].y - nodes[i].y
         dist = max(sqrt(dx^2 + dy^2), 0.1)
-        force = attraction * dist
+        force = attraction * (dist - ideal_dist)
         fx = force * dx / dist
         fy = force * dy / dist
         nodes[i].vx += fx
@@ -580,8 +590,8 @@ function step_force_layout!(
         nodes[j].vy -= fy
     end
 
-    # Center gravity
-    gravity = 0.05
+    # Center gravity (strong to keep everything centered)
+    gravity = 0.15
     cx, cy = width / 2, height / 2
     for node in nodes
         node.vx += gravity * (cx - node.x)
@@ -589,11 +599,12 @@ function step_force_layout!(
     end
 
     # Apply velocities with damping
-    damping = 0.85
+    damping = 0.80
+    margin = 1.0
     for node in nodes
         node.vx *= damping
         node.vy *= damping
-        node.x = clamp(node.x + node.vx, 2.0, width - 2.0)
-        node.y = clamp(node.y + node.vy, 2.0, height - 2.0)
+        node.x = clamp(node.x + node.vx, margin, width - margin)
+        node.y = clamp(node.y + node.vy, margin, height - margin)
     end
 end

@@ -16,13 +16,13 @@
     """Read an entire row from a Buffer as a String."""
     function buf_row(buf, y)
         area = buf.area
-        return String([buf_char(buf, x, y) for x in area.x:(area.x + area.width - 1)])
+        return String([buf_char(buf, x, y) for x = area.x:(area.x+area.width-1)])
     end
 
     """Join all rows of a Buffer into a single string for searching."""
     function buf_text(buf)
         area = buf.area
-        return join([buf_row(buf, y) for y in area.y:(area.y + area.height - 1)], "\n")
+        return join([buf_row(buf, y) for y = area.y:(area.y+area.height-1)], "\n")
     end
 end
 
@@ -106,10 +106,18 @@ end
 
     m = PkgTUIApp()
     m.metrics.metrics = [
-        PackageMetrics(name = "Tachikoma", disk_size_bytes = Int64(5_000_000), is_direct = true),
+        PackageMetrics(
+            name = "Tachikoma",
+            disk_size_bytes = Int64(5_000_000),
+            is_direct = true,
+        ),
         PackageMetrics(name = "Match", disk_size_bytes = Int64(100_000), is_direct = true),
         PackageMetrics(name = "TOML", disk_size_bytes = Int64(50_000), is_direct = true),
-        PackageMetrics(name = "SomeIndirect", disk_size_bytes = Int64(10_000), is_direct = false),
+        PackageMetrics(
+            name = "SomeIndirect",
+            disk_size_bytes = Int64(10_000),
+            is_direct = false,
+        ),
     ]
     m.metrics.profiling = true
 
@@ -143,7 +151,8 @@ end
 
 # ── Integration: TestBackend render verification ─────────────────────────────
 
-@testitem "metrics view renders timings (TestBackend)" tags = [:profiling, :view] setup = [BufReader] begin
+@testitem "metrics view renders timings (TestBackend)" tags = [:profiling, :view] setup =
+    [BufReader] begin
     using Tachikoma
     const T = Tachikoma
     using PkgTUI: PkgTUIApp, PackageMetrics, render_metrics_tab, format_time
@@ -154,12 +163,24 @@ end
     m = PkgTUIApp()
     m.active_tab = 5
     m.metrics.metrics = [
-        PackageMetrics(name = "FastPkg", disk_size_bytes = Int64(500_000),
-            compile_time_seconds = 0.350, is_direct = true),
-        PackageMetrics(name = "SlowPkg", disk_size_bytes = Int64(2_000_000),
-            compile_time_seconds = 2.5, is_direct = true),
-        PackageMetrics(name = "TinyPkg", disk_size_bytes = Int64(10_000),
-            compile_time_seconds = 0.012, is_direct = false),
+        PackageMetrics(
+            name = "FastPkg",
+            disk_size_bytes = Int64(500_000),
+            compile_time_seconds = 0.350,
+            is_direct = true,
+        ),
+        PackageMetrics(
+            name = "SlowPkg",
+            disk_size_bytes = Int64(2_000_000),
+            compile_time_seconds = 2.5,
+            is_direct = true,
+        ),
+        PackageMetrics(
+            name = "TinyPkg",
+            disk_size_bytes = Int64(10_000),
+            compile_time_seconds = 0.012,
+            is_direct = false,
+        ),
     ]
 
     buf = T.Buffer(area)
@@ -175,10 +196,18 @@ end
     m2 = PkgTUIApp()
     m2.active_tab = 5
     m2.metrics.metrics = [
-        PackageMetrics(name = "BrokenPkg", disk_size_bytes = Int64(100_000),
-            compile_time_seconds = -1.0, is_direct = true),
-        PackageMetrics(name = "GoodPkg", disk_size_bytes = Int64(200_000),
-            compile_time_seconds = 0.1, is_direct = true),
+        PackageMetrics(
+            name = "BrokenPkg",
+            disk_size_bytes = Int64(100_000),
+            compile_time_seconds = -1.0,
+            is_direct = true,
+        ),
+        PackageMetrics(
+            name = "GoodPkg",
+            disk_size_bytes = Int64(200_000),
+            compile_time_seconds = 0.1,
+            is_direct = true,
+        ),
     ]
 
     buf2 = T.Buffer(area)
@@ -192,8 +221,12 @@ end
     m3 = PkgTUIApp()
     m3.active_tab = 5
     m3.metrics.metrics = [
-        PackageMetrics(name = "UntimedPkg", disk_size_bytes = Int64(300_000),
-            compile_time_seconds = 0.0, is_direct = false),
+        PackageMetrics(
+            name = "UntimedPkg",
+            disk_size_bytes = Int64(300_000),
+            compile_time_seconds = 0.0,
+            is_direct = false,
+        ),
     ]
 
     buf3 = T.Buffer(area)
@@ -209,8 +242,8 @@ end
     import Pkg
     using Tachikoma
     const T = Tachikoma
-    using PkgTUI: PkgTUIApp, PackageMetrics, run_precompile_profiling,
-                  render_metrics_tab, format_time
+    using PkgTUI:
+        PkgTUIApp, PackageMetrics, run_precompile_profiling, render_metrics_tab, format_time
 
     proj = Pkg.project()
     proj_dir = dirname(proj.path)
@@ -224,8 +257,10 @@ end
     m = PkgTUIApp()
     m.active_tab = 5
     for name in dep_names
-        push!(m.metrics.metrics, PackageMetrics(
-            name = name, disk_size_bytes = Int64(100_000), is_direct = true))
+        push!(
+            m.metrics.metrics,
+            PackageMetrics(name = name, disk_size_bytes = Int64(100_000), is_direct = true),
+        )
     end
 
     # Apply timings the same way the :compile_profile handler does

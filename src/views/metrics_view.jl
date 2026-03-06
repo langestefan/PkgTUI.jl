@@ -172,7 +172,7 @@ function render_metrics_table(st::MetricsState, area::Rect, buf::Buffer)
     end
 
     # Rows
-    for i in 1:visible_rows
+    for i = 1:visible_rows
         idx = i + st.scroll_offset
         idx > total && break
         m = sorted[idx]
@@ -200,13 +200,7 @@ function render_metrics_table(st::MetricsState, area::Rect, buf::Buffer)
         set_string!(buf, x + 1, y, m.name, name_style)
         set_string!(buf, x + 25, y, format_bytes(m.disk_size_bytes), val_style)
         set_string!(buf, x + 38, y, format_time(m.compile_time_seconds), val_style)
-        set_string!(
-            buf,
-            x + 48,
-            y,
-            m.is_direct ? "direct" : "indirect",
-            type_style,
-        )
+        set_string!(buf, x + 48, y, m.is_direct ? "direct" : "indirect", type_style)
         y += 1
     end
 
@@ -214,8 +208,13 @@ function render_metrics_table(st::MetricsState, area::Rect, buf::Buffer)
     if total > visible_rows
         pct = round(Int, 100.0 * (st.scroll_offset + visible_rows) / total)
         pos_str = "$(min(pct, 100))% ($(total))"
-        set_string!(buf, inner.x + inner.width - length(pos_str) - 1,
-            inner.y + inner.height - 1, pos_str, tstyle(:text_dim))
+        set_string!(
+            buf,
+            inner.x + inner.width - length(pos_str) - 1,
+            inner.y + inner.height - 1,
+            pos_str,
+            tstyle(:text_dim),
+        )
     end
 end
 
