@@ -478,3 +478,106 @@ end
     Tachikoma.update!(m, KeyEvent(:escape))
     @test m.installed.adding == false
 end
+
+@testitem "updates tab conflicts focus" tags=[:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, ConflictInfo, UpdateInfo, handle_updates_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 2
+
+    # Add conflicts
+    m.conflicts.conflicts = [
+        ConflictInfo(package="Foo", held_at="1.0", latest="2.0", blocked_by="Bar"),
+        ConflictInfo(package="Baz", held_at="0.5", latest="1.0", blocked_by="Qux"),
+    ]
+    m.updates_state.updates = [
+        UpdateInfo(name="Foo", current_version="1.0", can_update=false),
+    ]
+
+    # 'c' toggles focus to conflicts panel
+    @test m.updates_state.conflicts_focused == false
+    consumed = handle_updates_keys!(m, KeyEvent('c'))
+    @test consumed == true
+    @test m.updates_state.conflicts_focused == true
+
+    # Arrow keys now navigate conflicts
+    @test m.conflicts.selected == 1
+    consumed = handle_updates_keys!(m, KeyEvent(:down))
+    @test consumed == true
+    @test m.conflicts.selected == 2
+
+    # 'c' toggles back to updates
+    consumed = handle_updates_keys!(m, KeyEvent('c'))
+    @test consumed == true
+    @test m.updates_state.conflicts_focused == false
+end
+
+@testitem "draw_line! does not error" tags=[:view] begin
+    using Tachikoma
+    using PkgTUI: draw_line!
+
+    area = Rect(1, 1, 40, 20)
+    buf = Tachikoma.Buffer(area)
+
+    # Horizontal-ish line
+    draw_line!(buf, 5, 5, 20, 7, area, tstyle(:text_dim))
+    @test true
+
+    # Vertical-ish line
+    draw_line!(buf, 10, 2, 12, 15, area, tstyle(:text_dim))
+    @test true
+
+    # Diagonal line
+    draw_line!(buf, 1, 1, 10, 10, area, tstyle(:text_dim))
+    @test true
+
+    # Zero-length line
+    draw_line!(buf, 5, 5, 5, 5, area, tstyle(:text_dim))
+    @test true
+end
+
+@testitem "get_selected_dep_name tree mode" tags=[:view] begin
+    using Tachikoma
+    using UUIDs
+    using PkgTUI: PkgTUIApp, GraphNode, get_selected_dep_name
+
+    m = PkgTUIApp()
+
+    # Tree mode with TreeView
+    root = TreeNode("Dependencies", [
+        TreeNode("MyPkg v1.2.3"),
+        TreeNode("Other v0.5.0"),
+    ])
+    m.deps.tree_view = TreeView(root; block=Block())
+    m.deps.tree_view.selected = 2  # "MyPkg v1.2.3"
+    m.deps.show_graph = false
+
+    name = get_selected_dep_name(m.deps, m)
+    @test name == "MyPkg"
+
+    # Graph mode
+    uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
+    m.deps.show_graph = true
+    m.deps.graph_nodes = [GraphNode(name="GraphPkg", uuid=uuid_a, is_direct=true)]
+    m.deps.selected_node = uuid_a
+
+    name = get_selected_dep_name(m.deps, m)
+    @test name == "GraphPkg"
+end
+
+@testitem "help flag in @main" tags=[:basic] begin
+    using PkgTUI
+
+    # Capture --help output via a Pipe
+    rd, wr = redirect_stdout()
+    ret = PkgTUI.main(["--help"])
+    @test ret == 0
+    redirect_stdout()
+    close(wr)
+    help_text = read(rd, String)
+    close(rd)
+    @test occursin("PkgTUI", help_text)
+    @test occursin("--project", help_text)
+    @test occursin("--help", help_text)
+end

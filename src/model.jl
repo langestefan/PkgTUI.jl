@@ -112,6 +112,7 @@ end
     loading::Bool = false
     dry_run_output::Union{String, Nothing} = nothing
     show_dry_run::Bool = false
+    conflicts_focused::Bool = false  # true = keyboard focus on conflicts panel
 end
 
 """State for the Registry Explorer tab."""

@@ -35,7 +35,24 @@ export pkgtui
 function (@main)(ARGS)
     project = nothing
     for arg in ARGS
-        if startswith(arg, "--project=")
+        if arg in ("--help", "-h")
+            println("PkgTUI — Terminal UI for Julia package management")
+            println()
+            println("Usage: pkgtui [options]")
+            println()
+            println("Options:")
+            println("  --project=<path>   Activate a specific Julia project")
+            println("  -p=<path>          Short form of --project")
+            println("  --help, -h         Show this help message")
+            println()
+            println("Keybindings:")
+            println("  1-5      Switch tabs (Installed, Updates, Registry, Dependencies, Metrics)")
+            println("  q/Esc    Quit")
+            println("  ?        Show help overlay")
+            println("  Ctrl+E   Switch environment")
+            println("  l        Toggle log pane")
+            return 0
+        elseif startswith(arg, "--project=")
             project = arg[length("--project=")+1:end]
         elseif startswith(arg, "-p=")
             project = arg[length("-p=")+1:end]

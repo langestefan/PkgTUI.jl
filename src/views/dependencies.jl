@@ -75,8 +75,11 @@ end
 function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
     st = m.deps
 
+    # Legend + status
+    settled = st.graph_iterations >= 200
+    status_str = settled ? "settled" : "layouting ($(st.graph_iterations)/200)"
     inner = render(Block(
-        title="Dependency Graph ($(length(st.graph_nodes)) nodes, $(length(st.graph_edges)) edges)",
+        title="Dependency Graph ($(length(st.graph_nodes)) nodes, $(length(st.graph_edges)) edges) [$status_str]",
         border_style=tstyle(:border)
     ), area, buf)
 
@@ -87,7 +90,7 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
     end
 
     # Run a layout iteration each frame for animation
-    if st.graph_iterations < 200
+    if !settled
         step_force_layout!(st.graph_nodes, st.graph_edges;
             width=Float64(inner.width), height=Float64(inner.height))
         st.graph_iterations += 1
@@ -95,44 +98,21 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     uuid_pos = Dict(n.uuid => (n.x, n.y) for n in st.graph_nodes)
 
-    # Draw edges using braille-style line characters
+    # Draw edges using Bresenham line algorithm
     for edge in st.graph_edges
         p1 = get(uuid_pos, edge.from, nothing)
         p2 = get(uuid_pos, edge.to, nothing)
         (p1 === nothing || p2 === nothing) && continue
 
-        # Simple line drawing between nodes
         x1, y1 = round(Int, p1[1]) + inner.x, round(Int, p1[2]) + inner.y
         x2, y2 = round(Int, p2[1]) + inner.x, round(Int, p2[2]) + inner.y
 
-        # Clamp to inner area
-        x1 = clamp(x1, inner.x, inner.x + inner.width - 1)
-        y1 = clamp(y1, inner.y, inner.y + inner.height - 1)
-        x2 = clamp(x2, inner.x, inner.x + inner.width - 1)
-        y2 = clamp(y2, inner.y, inner.y + inner.height - 1)
-
-        # Draw simple line using midpoint
-        mx, my = div(x1 + x2, 2), div(y1 + y2, 2)
-        mx = clamp(mx, inner.x, inner.x + inner.width - 1)
-        my = clamp(my, inner.y, inner.y + inner.height - 1)
-
-        if abs(x2 - x1) > abs(y2 - y1)
-            # Horizontal-ish: draw ─
-            for x in min(x1, x2):max(x1, x2)
-                x = clamp(x, inner.x, inner.x + inner.width - 1)
-                set_char!(buf, x, my, '·', tstyle(:text_dim))
-            end
-        else
-            # Vertical-ish: draw │
-            for y in min(y1, y2):max(y1, y2)
-                y = clamp(y, inner.y, inner.y + inner.height - 1)
-                set_char!(buf, mx, y, '·', tstyle(:text_dim))
-            end
-        end
+        draw_line!(buf, x1, y1, x2, y2, inner, tstyle(:text_dim))
     end
 
-    # Draw nodes on top
-    for node in st.graph_nodes
+    # Draw nodes on top (sorted: selected last so it renders on top)
+    sorted_nodes = sort(st.graph_nodes; by=n -> n.uuid == st.selected_node ? 1 : 0)
+    for node in sorted_nodes
         nx = round(Int, node.x) + inner.x
         ny = round(Int, node.y) + inner.y
         nx = clamp(nx, inner.x, inner.x + inner.width - 1)
@@ -147,12 +127,63 @@ function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
             tstyle(:text_dim)
         end
 
-        # Draw node label (truncated to fit)
+        # Node marker
+        marker = is_selected ? '◉' : (node.is_direct ? '●' : '○')
+        set_char!(buf, nx, ny, marker, style)
+
+        # Draw label next to node
         label = node.name
-        max_label = inner.x + inner.width - nx - 1
-        if max_label > 0
+        label_x = nx + 2
+        max_label = inner.x + inner.width - label_x
+        if max_label > 3
             display_label = length(label) > max_label ? label[1:max_label] : label
-            set_string!(buf, nx, ny, display_label, style)
+            set_string!(buf, label_x, ny, display_label, style)
+        end
+    end
+
+    # Legend at bottom-right
+    ly = inner.y + inner.height - 2
+    lx = inner.x + inner.width - 22
+    if lx > inner.x && ly > inner.y
+        set_string!(buf, lx, ly, "● direct  ○ indirect", tstyle(:text_dim))
+    end
+end
+
+"""Draw a line between two points using Bresenham's algorithm."""
+function draw_line!(buf::Buffer, x1::Int, y1::Int, x2::Int, y2::Int,
+                    bounds::Rect, style)
+    dx = abs(x2 - x1)
+    dy = -abs(y2 - y1)
+    sx = x1 < x2 ? 1 : -1
+    sy = y1 < y2 ? 1 : -1
+    err = dx + dy
+    x, y = x1, y1
+
+    max_steps = dx - dy + 2  # prevent infinite loop
+    for _ in 1:max_steps
+        # Pick line char based on direction
+        cx = clamp(x, bounds.x, bounds.x + bounds.width - 1)
+        cy = clamp(y, bounds.y, bounds.y + bounds.height - 1)
+        if cx == x && cy == y  # only draw if within bounds
+            char = if dx > -dy * 2
+                '─'
+            elseif -dy > dx * 2
+                '│'
+            else
+                (sx > 0) == (sy > 0) ? '╲' : '╱'
+            end
+            set_char!(buf, x, y, char, style)
+        end
+
+        (x == x2 && y == y2) && break
+        e2 = 2 * err
+        if e2 >= dy
+            err += dy
+            x += sx
+        end
+        if e2 <= dx
+            err += dx
+            y += sy
         end
     end
 end
@@ -220,14 +251,18 @@ end
 """Get the name of the currently selected dependency."""
 function get_selected_dep_name(st::DependenciesState, m::PkgTUIApp)::Union{String, Nothing}
     if st.show_graph && st.selected_node !== nothing
-        node = findfirst(n -> n.uuid == st.selected_node, st.graph_nodes)
-        return node !== nothing ? st.graph_nodes[node].name : nothing
+        idx = findfirst(n -> n.uuid == st.selected_node, st.graph_nodes)
+        return idx !== nothing ? st.graph_nodes[idx].name : nothing
     end
-    # For tree mode, we'd need to parse the TreeView's selected label
-    # For now return the first direct dep as fallback
-    if !isempty(m.installed.packages)
-        direct = filter(p -> p.is_direct_dep, m.installed.packages)
-        return isempty(direct) ? nothing : first(direct).name
+    # Tree mode: get selected label from TreeView's flattened rows
+    if st.tree_view !== nothing && st.tree_view.selected >= 1
+        flat = Tachikoma.flatten_tree(st.tree_view.root, st.tree_view.show_root)
+        if st.tree_view.selected <= length(flat)
+            label = flat[st.tree_view.selected].label
+            # Labels look like "PackageName vX.Y.Z" — extract the name part
+            parts = split(label)
+            return isempty(parts) ? nothing : String(first(parts))
+        end
     end
     return nothing
 end

@@ -34,6 +34,9 @@ function Tachikoma.init!(m::PkgTUIApp, terminal::Tachikoma.Terminal)
         build_registry_index()
     end
 
+    # Auto-refresh timer: check for updates every 5 minutes
+    spawn_timer!(m.tq, :auto_refresh, 300.0; repeat=true)
+
     push_log!(m, "Loading environment data...")
 end
 
@@ -279,6 +282,16 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
 
     elseif evt.id == :fetch_env_list
         m.env_list = evt.value::Vector{String}
+
+    elseif evt.id == :auto_refresh
+        # Periodic background refresh — only if not already loading
+        if !m.installed.loading
+            push_log!(m, "Auto-refresh: checking for changes...")
+            spawn_task!(m.tq, :fetch_installed) do
+                io = IOBuffer()
+                fetch_installed(io)
+            end
+        end
     end
 end
 

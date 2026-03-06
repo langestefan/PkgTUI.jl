@@ -67,13 +67,18 @@ function render_updates_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     end
 
     # Action hints
+    # Conflict focus indicator
+    conflict_hint = has_conflicts ? [
+        Span("[c]onflicts ", st.conflicts_focused ? tstyle(:accent, bold=true) : tstyle(:text_dim)),
+    ] : Span[]
+
     render(StatusBar(
-        left=[
+        left=vcat([
             Span("  [u]pdate selected ", tstyle(:accent)),
             Span("[U]pdate all ", tstyle(:accent)),
             Span("[d]ry-run ", tstyle(:accent)),
             Span("[R]efresh ", tstyle(:text_dim)),
-        ],
+        ], conflict_hint),
         right=[],
     ), rows[end], buf)
 end
@@ -187,9 +192,21 @@ function handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         return false
     end
 
+    # Delegate to conflicts panel when focused there
+    if st.conflicts_focused && !isempty(m.conflicts.conflicts)
+        if evt.key == :char && evt.char == 'c'
+            st.conflicts_focused = false
+            return true
+        end
+        return handle_conflicts_keys!(m, evt)
+    end
+
     if evt.key == :char
         c = evt.char
-        if c == 'u' && !isempty(st.updates)
+        if c == 'c' && !isempty(m.conflicts.conflicts)
+            st.conflicts_focused = true
+            return true
+        elseif c == 'u' && !isempty(st.updates)
             idx = st.selected
             if idx >= 1 && idx <= length(st.updates)
                 name = st.updates[idx].name
