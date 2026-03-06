@@ -316,7 +316,7 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    run_precompile_profiling() → Vector{Tuple{String, Float64}}
+    run_precompile_profiling(proj_dir, dep_names) → Vector{Tuple{String, Float64}}
 
 Measure **load times** for each direct project dependency by loading it
 in a fresh Julia subprocess.  Returns [(name, seconds), ...] sorted by
@@ -325,16 +325,15 @@ time descending.
 Only direct dependencies are timed — transitive deps are loaded
 naturally as part of loading the direct dep, which is the user-relevant
 metric.
+
+**Important:** `Pkg.project()` must be called on the *main thread* and
+the results passed in here, because this function typically runs inside
+a `spawn_task!` where the Pkg project state may not be available.
 """
-function run_precompile_profiling()::Vector{Tuple{String,Float64}}
-    proj = Pkg.project()
-    proj_dir = proj.path !== nothing ? dirname(proj.path) : nothing
-    proj_dir === nothing && return Tuple{String,Float64}[]
+function run_precompile_profiling(proj_dir::AbstractString, dep_names::Vector{String})::Vector{Tuple{String,Float64}}
+    isempty(dep_names) && return Tuple{String,Float64}[]
 
-    names = collect(keys(proj.dependencies))
-    isempty(names) && return Tuple{String,Float64}[]
-
-    timings = _measure_load_times(names, proj_dir)
+    timings = _measure_load_times(dep_names, proj_dir)
     sort!(timings; by = last, rev = true)
     return timings
 end
@@ -363,6 +362,15 @@ function _measure_load_times(names::Vector{String}, proj_dir::AbstractString)::V
 
     julia_cmd = Base.julia_cmd()
 
+    # Build a clean environment for subprocesses:
+    # CRITICAL: remove JULIA_LOAD_PATH — when PkgTUI runs as a Pkg App or
+    # under Pkg.test(), the parent sets JULIA_LOAD_PATH to a restricted value
+    # that omits @stdlib.  The subprocess inherits this, causing
+    # `Base.require` to fail for packages that ARE in the project manifest.
+    # By clearing it, the subprocess uses the default load path
+    # (@, @v#.#, @stdlib) with --project= correctly setting @.
+    clean_env = Dict(k => v for (k, v) in ENV if k != "JULIA_LOAD_PATH")
+
     # Launch one subprocess per package, up to 8 concurrently.
     # CRITICAL: redirect stderr to devnull — without this, subprocess stderr
     # (CondaPkg messages, precompilation output, deprecation warnings) fills
@@ -370,7 +378,7 @@ function _measure_load_times(names::Vector{String}, proj_dir::AbstractString)::V
     # reads stdout via `read(cmd, String)`, so stderr is never drained.
     results = asyncmap(names; ntasks = min(8, length(names))) do name
         try
-            raw_cmd = `$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`
+            raw_cmd = setenv(`$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`, clean_env)
             cmd = pipeline(raw_cmd; stderr=devnull)
             output = read(cmd, String)
             # Find our marker line in the (possibly noisy) output

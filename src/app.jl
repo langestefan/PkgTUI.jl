@@ -377,9 +377,19 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         direct_count = count(mi -> mi.is_direct, metrics)
         push_log!(m, "Disk sizes measured ($(length(metrics)) pkgs). Profiling load times for $(direct_count) direct dependencies...")
 
+        # Capture project info on the main thread — Pkg.project() is not
+        # reliable from a spawned task (thread-local state).
+        proj = Pkg.project()
+        proj_dir = proj.path !== nothing ? dirname(proj.path) : nothing
+        dep_names = collect(String, keys(proj.dependencies))
+
         # Time only direct dependencies — they naturally load their transitive deps
         spawn_task!(m.tq, :compile_profile) do
-            run_precompile_profiling()
+            if proj_dir === nothing
+                Tuple{String,Float64}[]
+            else
+                run_precompile_profiling(proj_dir, dep_names)
+            end
         end
 
     elseif evt.id == :compile_profile
@@ -392,11 +402,13 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         m.metrics.profiling = false
         m.metrics.profile_progress = 1.0
         timed_count = count(t -> t[2] > 0.0, timings)
+        err_count = count(t -> t[2] < 0.0, timings)
         if isempty(timings)
             push_log!(m, "No timing data could be collected.")
             set_status!(m, "Profiling complete (no timing data)", :warning)
         else
-            push_log!(m, "Profiling complete. $(timed_count) direct dependencies timed.")
+            push_log!(m, "Profiling complete. $(timed_count)/$(length(timings)) timed" *
+                (err_count > 0 ? ", $(err_count) errors" : "") * ".")
             set_status!(m, "Profiling complete", :success)
         end
 

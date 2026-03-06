@@ -31,7 +31,7 @@ end
     @test m.quit == false
     @test m.tick == 0
     @test m.active_tab == 1
-    @test length(m.tab_names) == 5
+    @test length(m.tab_names) == 6
     @test m.show_help == false
     @test m.modal === nothing
 
@@ -224,7 +224,8 @@ end
     @test format_time(1.5) == "1500 ms"
     @test format_time(0.005) == "5.0 ms"
     @test format_time(0.0023) == "2.3 ms"
-    @test format_time(0.00012) == "0.12 ms"
+    @test format_time(0.00012) == "< 1 ms"
+    @test format_time(-1.0) == "err"
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
