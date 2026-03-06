@@ -80,6 +80,10 @@ function Tachikoma.view(m::PkgTUIApp, f::Frame)
     if m.triage.show
         render_triage_overlay(m, f.area, f.buffer)
     end
+
+    if m.registry.version_picker.show
+        render_version_picker(m, f.area, f.buffer)
+    end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -95,6 +99,12 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
     # ── Modal handling (highest priority) ──
     if m.modal !== nothing
         handle_modal_keys!(m, evt)
+        return
+    end
+
+    # ── Version picker overlay ──
+    if m.registry.version_picker.show
+        handle_version_picker_keys!(m, evt)
         return
     end
 
@@ -215,6 +225,19 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         # Show initial results (top packages)
         do_registry_search!(m)
 
+    elseif evt.id == :fetch_versions
+        versions = evt.value::Vector{String}
+        vp = m.registry.version_picker
+        vp.versions = versions
+        vp.selected = 1
+        vp.scroll_offset = 0
+        if isempty(versions)
+            push_log!(m, "No versions found for $(vp.package_name).")
+            vp.show = false
+        else
+            push_log!(m, "Found $(length(versions)) versions for $(vp.package_name).")
+        end
+
     elseif evt.id == :add
         result = evt.value
         msg = result isa NamedTuple ? result.result : string(result)
@@ -269,6 +292,11 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         msg = result isa NamedTuple ? result.result : string(result)
         push_log!(m, msg)
         set_status!(m, msg, :success)
+        # Clear the removed package from installed_names so registry no longer shows "Installed"
+        pkg_name = result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
+        if pkg_name !== nothing
+            delete!(m.registry.installed_names, pkg_name)
+        end
         refresh_all!(m)
 
     elseif evt.id == :update_single || evt.id == :update_all
@@ -403,7 +431,7 @@ function execute_modal_action!(m::PkgTUIApp)
         spawn_task!(m.tq, :remove) do
             io = IOBuffer()
             result = remove_package(target, io)
-            (result=result, log=String(take!(io)))
+            (result=result, log=String(take!(io)), name=target)
         end
     elseif action == :open_triage
         build_triage_content!(m.triage, m.project_info)
@@ -517,9 +545,14 @@ function pkgtui(; project::Union{String, Nothing}=nothing, fps::Int=30)
         Pkg.activate(project)
     elseif haskey(ENV, "JULIA_LOAD_PATH")
         # When launched as a Pkg App the shim sets JULIA_LOAD_PATH to the
-        # PkgTUI project itself.  Switch to the user's default environment
-        # so that package operations target the right place.
-        Pkg.activate()
+        # PkgTUI project itself.  Activate the project in the current working
+        # directory if one exists, otherwise fall back to the default environment.
+        cwd = pwd()
+        if isfile(joinpath(cwd, "Project.toml"))
+            Pkg.activate(cwd)
+        else
+            Pkg.activate()
+        end
     end
     app(PkgTUIApp(); fps=fps, default_bindings=true)
 end

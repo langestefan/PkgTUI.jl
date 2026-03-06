@@ -108,6 +108,7 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     hint_spans = [
         Span("  [Enter] Install ", tstyle(:accent)),
+        Span("[v]ersion ", tstyle(:accent)),
         Span("[/] Focus search ", tstyle(:text_dim)),
     ]
     if selected_is_failed
@@ -242,6 +243,22 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                 focused=true
             )
             return true
+        elseif c == 'v'
+            # Open version picker for the selected package
+            if !isempty(st.results) && st.selected >= 1 && st.selected <= length(st.results)
+                pkg = st.results[st.selected]
+                vp = st.version_picker
+                vp.package_name = pkg.name
+                vp.versions = String[]
+                vp.selected = 1
+                vp.scroll_offset = 0
+                vp.show = true
+                push_log!(m, "Loading versions for $(pkg.name)...")
+                spawn_task!(m.tq, :fetch_versions) do
+                    fetch_package_versions(pkg.name)
+                end
+            end
+            return true
         elseif c == 't'
             # Open triage for a failed package
             if !isempty(st.results) && st.selected >= 1 && st.selected <= length(st.results)
@@ -311,4 +328,142 @@ function do_registry_search!(m::PkgTUIApp)
         st.selected = isempty(st.results) ? 0 : 1
         st.scroll_offset = 0
     end
+end
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Version picker overlay
+# ──────────────────────────────────────────────────────────────────────────────
+
+"""
+    render_version_picker(m::PkgTUIApp, area::Rect, buf::Buffer)
+
+Render a centered overlay listing all available versions of a package.
+"""
+function render_version_picker(m::PkgTUIApp, area::Rect, buf::Buffer)
+    vp = m.registry.version_picker
+    isempty(vp.versions) && return
+
+    # Size the overlay
+    w = min(area.width - 4, 40)
+    h = min(area.height - 4, length(vp.versions) + 4)  # +4 for border + status
+    h = max(h, 6)
+    overlay_rect = center(area, w, h)
+
+    # Clear background
+    blank = " "^overlay_rect.width
+    for y in overlay_rect.y:(overlay_rect.y + overlay_rect.height - 1)
+        set_string!(buf, overlay_rect.x, y, blank, tstyle(:text))
+    end
+
+    inner = render(Block(
+        title="Install $(vp.package_name) — Select Version",
+        border_style=tstyle(:accent),
+        box=BOX_DOUBLE,
+    ), overlay_rect, buf)
+
+    # Layout: list | status bar
+    rows = split_layout(Layout(Vertical, [Fill(), Fixed(1)]), inner)
+    list_area = rows[1]
+    status_area = rows[2]
+
+    visible = list_area.height
+    vp.scroll_offset = clamp(vp.scroll_offset, 0, max(0, length(vp.versions) - visible))
+
+    if vp.selected > vp.scroll_offset + visible
+        vp.scroll_offset = vp.selected - visible
+    elseif vp.selected <= vp.scroll_offset
+        vp.scroll_offset = max(0, vp.selected - 1)
+    end
+
+    for i in 1:visible
+        idx = i + vp.scroll_offset
+        idx > length(vp.versions) && break
+        y = list_area.y + i - 1
+        is_selected = (idx == vp.selected)
+
+        if is_selected
+            set_string!(buf, list_area.x, y, "▶", tstyle(:accent))
+        end
+
+        ver_str = "v" * vp.versions[idx]
+        style = is_selected ? tstyle(:accent, bold=true) : tstyle(:text)
+        set_string!(buf, list_area.x + 2, y, ver_str, style)
+
+        # Mark latest
+        if idx == 1
+            set_string!(buf, list_area.x + 2 + length(ver_str) + 1, y, "(latest)", tstyle(:text_dim))
+        end
+    end
+
+    render(StatusBar(
+        left=[
+            Span("  ↑↓ select ", tstyle(:text_dim)),
+            Span("[Enter] install ", tstyle(:accent)),
+            Span("[Esc] cancel ", tstyle(:text_dim)),
+        ],
+        right=[],
+    ), status_area, buf)
+end
+
+"""
+    handle_version_picker_keys!(m::PkgTUIApp, evt::KeyEvent) → Bool
+
+Handle keyboard input for the version picker overlay.
+"""
+function handle_version_picker_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
+    vp = m.registry.version_picker
+
+    if evt.key == :escape
+        vp.show = false
+        return true
+    elseif evt.key == :up
+        vp.selected = max(1, vp.selected - 1)
+        return true
+    elseif evt.key == :down
+        vp.selected = min(length(vp.versions), vp.selected + 1)
+        return true
+    elseif evt.key == :pageup
+        vp.selected = max(1, vp.selected - 10)
+        return true
+    elseif evt.key == :pagedown
+        vp.selected = min(length(vp.versions), vp.selected + 10)
+        return true
+    elseif evt.key == :home
+        vp.selected = 1
+        return true
+    elseif evt.key == :endd
+        vp.selected = length(vp.versions)
+        return true
+    elseif evt.key == :enter
+        if vp.selected >= 1 && vp.selected <= length(vp.versions)
+            version = vp.versions[vp.selected]
+            pkg_name = vp.package_name
+            st = m.registry
+
+            # Don't install if already installing something
+            if st.installing_name !== nothing
+                vp.show = false
+                return true
+            end
+
+            st.installing_name = pkg_name
+            push_log!(m, "Installing $(pkg_name)@$(version)...")
+            spawn_task!(m.tq, :add) do
+                io = IOBuffer()
+                result = add_package(pkg_name, io; version=version)
+                # Pin to the selected version so compat is set correctly
+                if !startswith(result, "Error")
+                    try
+                        pin_package(pkg_name, io; version=VersionNumber(version))
+                    catch
+                    end
+                end
+                (result=result, log=String(take!(io)), name=pkg_name)
+            end
+            vp.show = false
+        end
+        return true
+    end
+
+    return false
 end

@@ -115,6 +115,15 @@ end
     conflicts_focused::Bool = false  # true = keyboard focus on conflicts panel
 end
 
+"""State for the version picker overlay in the Registry tab."""
+@kwdef mutable struct VersionPickerState
+    show::Bool = false
+    package_name::String = ""
+    versions::Vector{String} = String[]
+    selected::Int = 1
+    scroll_offset::Int = 0
+end
+
 """State for the Registry Explorer tab."""
 @kwdef mutable struct RegistryState
     search_input::TextInput = TextInput(; label="  Search: ", focused=false)
@@ -129,6 +138,7 @@ end
     installing_name::Union{String, Nothing} = nothing  # name of package currently being installed
     installed_names::Set{String} = Set{String}()        # packages installed this session
     failed_names::Set{String} = Set{String}()            # packages that failed to install
+    version_picker::VersionPickerState = VersionPickerState()
 end
 
 """State for the Dependencies tab."""

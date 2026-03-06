@@ -114,14 +114,19 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    add_package(name::String, io::IOBuffer) → String
+    add_package(name::String, io::IOBuffer; version::Union{String, Nothing}=nothing) → String
 
-Add a package by name. Returns a status message.
+Add a package by name, optionally at a specific version. Returns a status message.
 """
-function add_package(name::String, io::IOBuffer)::String
+function add_package(name::String, io::IOBuffer; version::Union{String, Nothing}=nothing)::String
     try
-        Pkg.add(name; io=io)
-        return "Package '$name' added successfully."
+        if version !== nothing
+            Pkg.add(; name=name, version=version, io=io)
+        else
+            Pkg.add(name; io=io)
+        end
+        ver_str = version !== nothing ? "@$version" : ""
+        return "Package '$name'$ver_str added successfully."
     catch e
         return "Error in add: $(sprint(showerror, e))"
     end
@@ -158,13 +163,18 @@ function update_all(io::IOBuffer)::String
 end
 
 """
-    pin_package(name::String, io::IOBuffer) → String
+    pin_package(name::String, io::IOBuffer; version::Union{VersionNumber, Nothing}=nothing) → String
 
-Pin a package to its current version.
+Pin a package to its current version, or to a specific version if provided.
 """
-function pin_package(name::String, io::IOBuffer)::String
-    Pkg.pin(name; io=io)
-    return "Package '$name' pinned."
+function pin_package(name::String, io::IOBuffer; version::Union{VersionNumber, Nothing}=nothing)::String
+    if version !== nothing
+        Pkg.pin(; name=name, version=version, io=io)
+        return "Package '$name' pinned to v$version."
+    else
+        Pkg.pin(name; io=io)
+        return "Package '$name' pinned."
+    end
 end
 
 """
@@ -343,8 +353,9 @@ end
 """
     _measure_load_times() → Vector{Tuple{String, Float64}}
 
-Spawn a fresh Julia process that `import`s each direct dependency and reports
-the elapsed time.  This always produces data regardless of precompile state.
+Spawn a separate Julia subprocess **per package** so that shared transitive
+dependencies don't deflate subsequent measurements.  Runs up to 4 subprocesses
+in parallel via `asyncmap` for speed.
 """
 function _measure_load_times()::Vector{Tuple{String, Float64}}
     proj = Pkg.project()
@@ -354,35 +365,34 @@ function _measure_load_times()::Vector{Tuple{String, Float64}}
     dep_names = collect(keys(proj.dependencies))
     isempty(dep_names) && return Tuple{String, Float64}[]
 
-    # Script that measures `import` time for each package in the same process.
-    # Packages are loaded sequentially; each measurement is independent because
-    # `import` is idempotent (first call pays the cost, subsequent ones ~0s).
-    # Using a single process keeps startup overhead to a minimum.
+    # Each subprocess measures a single package in isolation.
     script = raw"""
-    for name in ARGS
-        try
-            sym = Symbol(name)
-            t = @elapsed Base.require(Main, sym)
-            println(name, "\t", t)
-        catch
-            println(name, "\t", 0.0)
-        end
-    end
+    sym = Symbol(ARGS[1])
+    t = @elapsed Base.require(Main, sym)
+    println(ARGS[1], "\t", t)
     """
 
-    timings = Tuple{String, Float64}[]
-    try
-        cmd = `$(Base.julia_cmd()) --project=$proj_dir --startup-file=no -e $script -- $dep_names`
-        output = read(cmd, String)
-        for line in split(output, '\n')
-            parts = split(strip(line), '\t')
-            length(parts) == 2 || continue
-            name = String(parts[1])
-            secs = tryparse(Float64, parts[2])
-            secs !== nothing && push!(timings, (name, secs))
+    julia_cmd = Base.julia_cmd()
+
+    # Launch one subprocess per package, up to 4 concurrently.
+    results = asyncmap(dep_names; ntasks=4) do name
+        try
+            cmd = `$julia_cmd --project=$proj_dir --startup-file=no -e $script -- $name`
+            output = strip(read(cmd, String))
+            parts = split(output, '\t')
+            if length(parts) == 2
+                secs = tryparse(Float64, parts[2])
+                secs !== nothing && return (String(parts[1]), secs)
+            end
+        catch
+            # Subprocess failed for this package — skip
         end
-    catch
-        # Subprocess failed — return what we have
+        return nothing
+    end
+
+    timings = Tuple{String, Float64}[]
+    for r in results
+        r !== nothing && push!(timings, r)
     end
 
     return timings

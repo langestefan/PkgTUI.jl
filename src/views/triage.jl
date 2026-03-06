@@ -16,6 +16,12 @@ function render_triage_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     h = min(area.height - 2, 40)
     overlay_rect = center(area, w, h)
 
+    # Clear the background behind the overlay so underlying content doesn't bleed through
+    blank = " "^overlay_rect.width
+    for y in overlay_rect.y:(overlay_rect.y + overlay_rect.height - 1)
+        set_string!(buf, overlay_rect.x, y, blank, tstyle(:text))
+    end
+
     inner = render(Block(
         title="Install Triage: $(tr.package_name)",
         border_style=tstyle(:accent),

@@ -857,3 +857,89 @@ end
     consumed = handle_registry_keys!(m, KeyEvent('t'))
     @test m.triage.show == false
 end
+
+@testitem "VersionPickerState defaults" tags=[:unit, :fast] begin
+    using PkgTUI: VersionPickerState
+
+    vp = VersionPickerState()
+    @test vp.show == false
+    @test vp.package_name == ""
+    @test isempty(vp.versions)
+    @test vp.selected == 1
+    @test vp.scroll_offset == 0
+end
+
+@testitem "version picker key v opens picker" tags=[:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 3
+    m.registry.index_loaded = true
+    m.registry.results = [
+        RegistryPackage(name="JSON", latest_version="1.0.0"),
+    ]
+    m.registry.selected = 1
+
+    # Press 'v' — should open version picker
+    consumed = handle_registry_keys!(m, KeyEvent('v'))
+    @test consumed == true
+    @test m.registry.version_picker.show == true
+    @test m.registry.version_picker.package_name == "JSON"
+end
+
+@testitem "version picker navigation" tags=[:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, handle_version_picker_keys!
+
+    m = PkgTUIApp()
+    vp = m.registry.version_picker
+    vp.show = true
+    vp.package_name = "TestPkg"
+    vp.versions = ["2.0.0", "1.5.0", "1.0.0"]
+    vp.selected = 1
+
+    # Down arrow
+    handle_version_picker_keys!(m, KeyEvent(:down))
+    @test vp.selected == 2
+
+    # Down again
+    handle_version_picker_keys!(m, KeyEvent(:down))
+    @test vp.selected == 3
+
+    # Down at bottom — stays at 3
+    handle_version_picker_keys!(m, KeyEvent(:down))
+    @test vp.selected == 3
+
+    # Up
+    handle_version_picker_keys!(m, KeyEvent(:up))
+    @test vp.selected == 2
+
+    # Escape closes
+    handle_version_picker_keys!(m, KeyEvent(:escape))
+    @test vp.show == false
+end
+
+@testitem "render version picker overlay" tags=[:view] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, render_version_picker
+
+    m = PkgTUIApp()
+    m.registry.version_picker.show = true
+    m.registry.version_picker.package_name = "JSON"
+    m.registry.version_picker.versions = ["1.0.0", "0.21.0", "0.20.0"]
+    m.registry.version_picker.selected = 1
+
+    area = Rect(1, 1, 80, 30)
+    buf = Tachikoma.Buffer(area)
+    render_version_picker(m, area, buf)
+    @test true  # no crash
+end
+
+@testitem "version picker in RegistryState" tags=[:unit, :fast] begin
+    using PkgTUI: RegistryState
+
+    rs = RegistryState()
+    @test rs.version_picker.show == false
+    @test rs.version_picker.package_name == ""
+end

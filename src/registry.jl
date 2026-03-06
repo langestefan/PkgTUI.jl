@@ -103,3 +103,27 @@ function fuzzy_match(text::AbstractString, query::AbstractString)::Bool
     end
     return true
 end
+
+"""
+    fetch_package_versions(pkg_name::String) → Vector{String}
+
+Look up all available versions for a package from reachable registries.
+Returns version strings sorted in descending order (newest first).
+"""
+function fetch_package_versions(pkg_name::String)::Vector{String}
+    for reg in Pkg.Registry.reachable_registries()
+        for (_, entry) in reg.pkgs
+            if entry.name == pkg_name
+                try
+                    info = Pkg.Registry.registry_info(entry)
+                    vers = info.version_info
+                    if !isempty(vers)
+                        return [string(v) for v in sort(collect(keys(vers)); rev=true)]
+                    end
+                catch
+                end
+            end
+        end
+    end
+    return String[]
+end
