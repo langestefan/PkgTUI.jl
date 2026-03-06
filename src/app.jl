@@ -374,12 +374,12 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         metrics = evt.value::Vector{PackageMetrics}
         m.metrics.metrics = metrics
         m.metrics.profile_progress = 0.5
-        pkg_names = [m_item.name for m_item in metrics]
-        push_log!(m, "Disk sizes measured ($(length(metrics)) pkgs). Profiling load times for $(length(pkg_names)) packages...")
+        direct_count = count(mi -> mi.is_direct, metrics)
+        push_log!(m, "Disk sizes measured ($(length(metrics)) pkgs). Profiling load times for $(direct_count) direct dependencies...")
 
-        # Now run compile profiling for ALL packages in the metrics list
+        # Time only direct dependencies — they naturally load their transitive deps
         spawn_task!(m.tq, :compile_profile) do
-            run_precompile_profiling(pkg_names)
+            run_precompile_profiling()
         end
 
     elseif evt.id == :compile_profile
@@ -392,16 +392,11 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         m.metrics.profiling = false
         m.metrics.profile_progress = 1.0
         timed_count = count(t -> t[2] > 0.0, timings)
-        err_count = count(t -> t[2] < 0.0, timings)
         if isempty(timings)
             push_log!(m, "No timing data could be collected.")
             set_status!(m, "Profiling complete (no timing data)", :warning)
         else
-            msg = "Profiling complete. $(timed_count)/$(length(timings)) packages timed."
-            if err_count > 0
-                msg *= " ($err_count could not load in isolation)"
-            end
-            push_log!(m, msg)
+            push_log!(m, "Profiling complete. $(timed_count) direct dependencies timed.")
             set_status!(m, "Profiling complete", :success)
         end
 

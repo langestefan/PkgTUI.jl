@@ -316,23 +316,22 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    run_precompile_profiling(pkg_names::Vector{String}) → Vector{Tuple{String, Float64}}
+    run_precompile_profiling() → Vector{Tuple{String, Float64}}
 
-Measure **load times** for the given packages by loading each in a fresh
-Julia subprocess.  Returns [(name, seconds), ...] sorted by time descending.
+Measure **load times** for each direct project dependency by loading it
+in a fresh Julia subprocess.  Returns [(name, seconds), ...] sorted by
+time descending.
 
-When `pkg_names` is empty, falls back to direct project dependencies.
+Only direct dependencies are timed — transitive deps are loaded
+naturally as part of loading the direct dep, which is the user-relevant
+metric.
 """
-function run_precompile_profiling(pkg_names::Vector{String})::Vector{Tuple{String,Float64}}
+function run_precompile_profiling()::Vector{Tuple{String,Float64}}
     proj = Pkg.project()
     proj_dir = proj.path !== nothing ? dirname(proj.path) : nothing
     proj_dir === nothing && return Tuple{String,Float64}[]
 
-    names = if isempty(pkg_names)
-        collect(keys(proj.dependencies))
-    else
-        pkg_names
-    end
+    names = collect(keys(proj.dependencies))
     isempty(names) && return Tuple{String,Float64}[]
 
     timings = _measure_load_times(names, proj_dir)
