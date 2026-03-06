@@ -581,3 +581,117 @@ end
     @test occursin("--project", help_text)
     @test occursin("--help", help_text)
 end
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Registry search key navigation tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+@testitem "registry Escape preserves query" tags=[:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 3
+    m.registry.index_loaded = true
+    m.registry.registry_index = [
+        RegistryPackage(name="DataFrames"),
+        RegistryPackage(name="CSV"),
+    ]
+
+    # Focus the search input and type a query
+    m.registry.search_input = TextInput(; label="  Search: ", text="Data", focused=true)
+    @test m.registry.search_input.focused == true
+
+    # Press Escape — should unfocus but keep text
+    handle_registry_keys!(m, KeyEvent(:escape))
+    @test m.registry.search_input.focused == false
+    @test text(m.registry.search_input) == "Data"
+end
+
+@testitem "registry down-arrow moves to results" tags=[:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 3
+    m.registry.index_loaded = true
+    m.registry.results = [
+        RegistryPackage(name="DataFrames"),
+        RegistryPackage(name="CSV"),
+    ]
+    m.registry.selected = 1
+
+    # Focus search and type
+    m.registry.search_input = TextInput(; label="  Search: ", text="Data", focused=true)
+
+    # Press down-arrow — should unfocus search and put cursor on results
+    handle_registry_keys!(m, KeyEvent(:down))
+    @test m.registry.search_input.focused == false
+    @test text(m.registry.search_input) == "Data"
+    @test m.registry.selected >= 1
+end
+
+@testitem "registry up-arrow from top refocuses search" tags=[:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, RegistryPackage, handle_registry_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 3
+    m.registry.index_loaded = true
+    m.registry.results = [
+        RegistryPackage(name="DataFrames"),
+        RegistryPackage(name="CSV"),
+    ]
+    m.registry.selected = 1
+
+    # Search is unfocused, selected is at 1 (top)
+    m.registry.search_input = TextInput(; label="  Search: ", text="Data", focused=false)
+
+    # Press up at position 1 — should focus search input
+    handle_registry_keys!(m, KeyEvent(:up))
+    @test m.registry.search_input.focused == true
+    @test text(m.registry.search_input) == "Data"
+end
+
+@testitem "installed filter Escape preserves text" tags=[:event] begin
+    using Tachikoma
+    using UUIDs
+    using PkgTUI: PkgTUIApp, PackageRow, apply_filter!, handle_installed_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 1
+    m.installed.packages = [
+        PackageRow(name="Alpha", uuid=UUID("aaaaaaaa-0000-0000-0000-000000000001"),
+                   is_direct_dep=true, version="1.0"),
+    ]
+    apply_filter!(m.installed)
+
+    # Focus filter and type
+    m.installed.filter_input = TextInput(; label="  Filter: ", text="alp", focused=true)
+
+    # Press Escape — should unfocus but keep text
+    handle_installed_keys!(m, KeyEvent(:escape))
+    @test m.installed.filter_input.focused == false
+    @test text(m.installed.filter_input) == "alp"
+end
+
+@testitem "installed up-arrow from top focuses filter" tags=[:event] begin
+    using Tachikoma
+    using UUIDs
+    using PkgTUI: PkgTUIApp, PackageRow, apply_filter!, handle_installed_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 1
+    m.installed.packages = [
+        PackageRow(name="A", uuid=UUID("aaaaaaaa-0000-0000-0000-000000000001"),
+                   is_direct_dep=true, version="1.0"),
+        PackageRow(name="B", uuid=UUID("bbbbbbbb-0000-0000-0000-000000000002"),
+                   is_direct_dep=true, version="2.0"),
+    ]
+    apply_filter!(m.installed)
+    m.installed.selected = 1
+
+    # Press up at position 1 — should focus filter input
+    handle_installed_keys!(m, KeyEvent(:up))
+    @test m.installed.filter_input.focused == true
+end

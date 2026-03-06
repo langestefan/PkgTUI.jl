@@ -448,6 +448,11 @@ Launch the PkgTUI terminal interface.
 function pkgtui(; project::Union{String, Nothing}=nothing, fps::Int=30)
     if project !== nothing
         Pkg.activate(project)
+    elseif haskey(ENV, "JULIA_LOAD_PATH")
+        # When launched as a Pkg App the shim sets JULIA_LOAD_PATH to the
+        # PkgTUI project itself.  Switch to the user's default environment
+        # so that package operations target the right place.
+        Pkg.activate()
     end
     app(PkgTUIApp(); fps=fps, default_bindings=true)
 end

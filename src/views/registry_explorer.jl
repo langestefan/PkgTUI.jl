@@ -158,7 +158,12 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
     # ── Search input focused ──
     if st.search_input.focused
         if evt.key == :escape
-            st.search_input = TextInput(; label="  Search: ", focused=false)
+            # Unfocus but keep the search query
+            st.search_input = TextInput(;
+                label="  Search: ",
+                text=text(st.search_input),
+                focused=false,
+            )
             return true
         elseif evt.key == :enter
             # Unfocus search, keep query
@@ -167,6 +172,15 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                 text=text(st.search_input),
                 focused=false
             )
+            return true
+        elseif evt.key == :down
+            # Move focus from search input to results list
+            st.search_input = TextInput(;
+                label="  Search: ",
+                text=text(st.search_input),
+                focused=false,
+            )
+            st.selected = max(1, st.selected)
             return true
         else
             handle_key!(st.search_input, evt)
@@ -199,7 +213,16 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         end
         return true
     elseif evt.key == :up
-        st.selected = max(1, st.selected - 1)
+        if st.selected <= 1
+            # At top of results — move focus back to search input
+            st.search_input = TextInput(;
+                label="  Search: ",
+                text=text(st.search_input),
+                focused=true,
+            )
+        else
+            st.selected = st.selected - 1
+        end
         return true
     elseif evt.key == :down
         st.selected = min(length(st.results), st.selected + 1)

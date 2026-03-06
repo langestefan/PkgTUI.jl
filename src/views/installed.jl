@@ -199,7 +199,11 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
     # ── Filter focused ──
     if st.filter_input.focused
         if evt.key == :escape
-            st.filter_input = TextInput(; label="  Filter: ", focused=false)
+            st.filter_input = TextInput(;
+                label="  Filter: ",
+                text=text(st.filter_input),
+                focused=false,
+            )
             apply_filter!(st)
             return true
         elseif evt.key == :enter
@@ -207,6 +211,14 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                 label="  Filter: ",
                 text=text(st.filter_input),
                 focused=false
+            )
+            return true
+        elseif evt.key == :down
+            # Move focus from filter input to package list
+            st.filter_input = TextInput(;
+                label="  Filter: ",
+                text=text(st.filter_input),
+                focused=false,
             )
             return true
         else
@@ -287,7 +299,16 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             return true
         end
     elseif evt.key == :up
-        st.selected = max(1, st.selected - 1)
+        if st.selected <= 1
+            # At top of list — move focus back to filter input
+            st.filter_input = TextInput(;
+                label="  Filter: ",
+                text=text(st.filter_input),
+                focused=true,
+            )
+        else
+            st.selected = st.selected - 1
+        end
         return true
     elseif evt.key == :down
         st.selected = min(length(st.filtered), st.selected + 1)
