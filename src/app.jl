@@ -272,8 +272,13 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         end
         m.metrics.profiling = false
         m.metrics.profile_progress = 1.0
-        push_log!(m, "Profiling complete. $(length(timings)) packages profiled.")
-        set_status!(m, "Profiling complete", :success)
+        if isempty(timings)
+            push_log!(m, "All packages already precompiled — no timing data available.")
+            set_status!(m, "All packages already precompiled", :success)
+        else
+            push_log!(m, "Profiling complete. $(length(timings)) packages profiled.")
+            set_status!(m, "Profiling complete", :success)
+        end
 
     elseif evt.id == :switch_env
         push_log!(m, "Environment switched.")

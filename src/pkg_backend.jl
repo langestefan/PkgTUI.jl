@@ -303,12 +303,22 @@ function run_precompile_profiling(io::IOBuffer)::Vector{Tuple{String, Float64}}
 
     timings = Tuple{String, Float64}[]
     for line in split(raw, '\n')
-        # Parse lines like: "  ✓ PackageName 12.34s"
-        m = match(r"[✓✗]\s+(\S+)\s+([\d.]+)s", line)
+        # Actual format from Base.Precompilation:
+        #   "    388.7 ms  ✓ PackageName"
+        #   "  10625.5 ms  ✓ SciMLBase → SciMLBaseChainRulesCoreExt"
+        #   "    388.7 ms  ? PackageName"   (precompile error)
+        m = match(r"([\d.]+)\s+ms\s+[✓?]\s+(\S+)", line)
         if m !== nothing
-            name = m.captures[1]
-            secs = parse(Float64, m.captures[2])
-            push!(timings, (name, secs))
+            ms = parse(Float64, m.captures[1])
+            name = String(m.captures[2])
+            # Strip extension arrow notation: "Base → ExtName" → "ExtName"
+            if occursin(" → ", line)
+                ext_m = match(r"[✓?]\s+\S+\s+→\s+(\S+)", line)
+                if ext_m !== nothing
+                    name = String(ext_m.captures[1])
+                end
+            end
+            push!(timings, (name, ms / 1000.0))  # convert ms → seconds
         end
     end
 
