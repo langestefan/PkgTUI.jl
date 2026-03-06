@@ -29,6 +29,9 @@ function Tachikoma.init!(m::PkgTUIApp, terminal::Tachikoma.Terminal)
         fetch_installed(io)
     end
 
+    # Fetch outdated package info so update status is available on Installed tab
+    refresh_updates!(m)
+
     # Start registry index build in background
     spawn_task!(m.tq, :build_registry_index) do
         build_registry_index()
@@ -299,7 +302,7 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         end
         refresh_all!(m)
 
-    elseif evt.id == :update_single || evt.id == :update_all
+    elseif evt.id == :update_single || evt.id == :update_all || evt.id == :unpin_and_update
         result = evt.value
         msg = result isa NamedTuple ? result.result : string(result)
         push_log!(m, msg)
@@ -432,6 +435,16 @@ function execute_modal_action!(m::PkgTUIApp)
             io = IOBuffer()
             result = remove_package(target, io)
             (result=result, log=String(take!(io)), name=target)
+        end
+    elseif action == :unpin_and_update
+        push_log!(m, "Unpinning and updating $target...")
+        spawn_task!(m.tq, :unpin_and_update) do
+            io = IOBuffer()
+            free_package(target, io)
+            io2 = IOBuffer()
+            result = update_package(target, io2)
+            log = String(take!(io)) * String(take!(io2))
+            (result=result, log=log)
         end
     elseif action == :open_triage
         build_triage_content!(m.triage, m.project_info)

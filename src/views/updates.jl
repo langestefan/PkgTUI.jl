@@ -210,11 +210,26 @@ function handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             idx = st.selected
             if idx >= 1 && idx <= length(st.updates)
                 name = st.updates[idx].name
-                push_log!(m, "Updating $name...")
-                spawn_task!(m.tq, :update_single) do
-                    io = IOBuffer()
-                    result = update_package(name, io)
-                    (result=result, log=String(take!(io)))
+                # Check if the package is pinned
+                pinned_pkg = findfirst(p -> p.name == name && p.is_pinned, m.installed.packages)
+                if pinned_pkg !== nothing
+                    pkg = m.installed.packages[pinned_pkg]
+                    m.modal = Modal(;
+                        title="Package Pinned",
+                        message="'$name' is pinned to v$(something(pkg.version, "?")). Unpin and update?",
+                        confirm_label="Unpin & Update",
+                        cancel_label="Cancel",
+                        selected=:cancel
+                    )
+                    m.modal_action = :unpin_and_update
+                    m.modal_target = name
+                else
+                    push_log!(m, "Updating $name...")
+                    spawn_task!(m.tq, :update_single) do
+                        io = IOBuffer()
+                        result = update_package(name, io)
+                        (result=result, log=String(take!(io)))
+                    end
                 end
             end
             return true

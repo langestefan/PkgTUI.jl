@@ -34,6 +34,12 @@ function render_installed_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         border_style=tstyle(:border)
     ), table_area, buf)
 
+    # Build update lookup from updates state
+    update_lookup = Dict{String,UpdateInfo}()
+    for u in m.updates_state.updates
+        update_lookup[u.name] = u
+    end
+
     if st.loading
         set_string!(buf, table_inner.x + 2, table_inner.y + 1,
             "Loading packages...", tstyle(:text_dim, italic=true))
@@ -61,7 +67,8 @@ function render_installed_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             pkg = packages[idx]
             y = table_inner.y + 1 + i
             is_selected = (idx == st.selected)
-            render_package_row(pkg, table_inner.x, y, table_inner.width, buf, is_selected)
+            upd = get(update_lookup, pkg.name, nothing)
+            render_package_row(pkg, table_inner.x, y, table_inner.width, buf, is_selected, upd)
         end
     end
 
@@ -98,12 +105,16 @@ function render_package_table_header(area::Rect, buf::Buffer)
     col_ver = area.x + max(30, div(area.width, 3))
     col_type = col_ver + 14
     col_status = col_type + 10
+    col_update = col_status + 10
 
     set_string!(buf, col_name, y, "Name", style)
     set_string!(buf, col_ver, y, "Version", style)
     set_string!(buf, col_type, y, "Type", style)
     if col_status + 8 <= area.x + area.width
         set_string!(buf, col_status, y, "Status", style)
+    end
+    if col_update + 6 <= area.x + area.width
+        set_string!(buf, col_update, y, "Update", style)
     end
 
     # Separator line
@@ -114,11 +125,13 @@ end
 
 """Render a single package row."""
 function render_package_row(pkg::PackageRow, x::Int, y::Int, width::Int, buf::Buffer,
-                             selected::Bool)
+                             selected::Bool,
+                             update_info::Union{UpdateInfo, Nothing}=nothing)
     col_name = x + 1
     col_ver = x + max(30, div(width, 3))
     col_type = col_ver + 14
     col_status = col_type + 10
+    col_update = col_status + 10
 
     name_style = if selected
         tstyle(:accent, bold=true)
@@ -154,6 +167,20 @@ function render_package_row(pkg::PackageRow, x::Int, y::Int, width::Int, buf::Bu
         end
         set_string!(buf, col_status, y, status_str,
             selected ? tstyle(:accent) : tstyle(:text_dim))
+    end
+
+    # Update status column
+    if col_update + 6 <= x + width && update_info !== nothing
+        if update_info.can_update
+            ver = something(update_info.latest_compatible, "⬆")
+            upd_str = "⬆ $ver"
+            set_string!(buf, col_update, y, upd_str,
+                selected ? tstyle(:accent) : tstyle(:success))
+        else
+            upd_str = "⌅ held"
+            set_string!(buf, col_update, y, upd_str,
+                selected ? tstyle(:accent) : tstyle(:warning))
+        end
     end
 end
 
@@ -252,11 +279,23 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         elseif c == 'u'
             pkg = selected_package(st)
             if pkg !== nothing
-                push_log!(m, "Updating $(pkg.name)...")
-                spawn_task!(m.tq, :update_single) do
-                    io = IOBuffer()
-                    result = update_package(pkg.name, io)
-                    (result=result, log=String(take!(io)))
+                if pkg.is_pinned
+                    m.modal = Modal(;
+                        title="Package Pinned",
+                        message="'$(pkg.name)' is pinned to v$(something(pkg.version, "?")). Unpin and update?",
+                        confirm_label="Unpin & Update",
+                        cancel_label="Cancel",
+                        selected=:cancel
+                    )
+                    m.modal_action = :unpin_and_update
+                    m.modal_target = pkg.name
+                else
+                    push_log!(m, "Updating $(pkg.name)...")
+                    spawn_task!(m.tq, :update_single) do
+                        io = IOBuffer()
+                        result = update_package(pkg.name, io)
+                        (result=result, log=String(take!(io)))
+                    end
                 end
             end
             return true

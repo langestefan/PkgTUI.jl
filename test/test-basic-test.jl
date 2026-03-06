@@ -485,6 +485,61 @@ end
     @test m.installed.adding == false
 end
 
+@testitem "update pinned package shows modal" tags=[:event] begin
+    using Tachikoma
+    using UUIDs
+    using PkgTUI: PkgTUIApp, PackageRow, UpdateInfo, apply_filter!,
+                  handle_installed_keys!, handle_updates_keys!
+
+    # ── Installed tab: 'u' on pinned package shows confirmation modal ──
+    m = PkgTUIApp()
+    m.installed.packages = [
+        PackageRow(name="PinnedPkg", uuid=UUID("aaaaaaaa-0000-0000-0000-000000000001"),
+                   is_direct_dep=true, version="1.2.3", is_pinned=true),
+        PackageRow(name="FreePkg", uuid=UUID("bbbbbbbb-0000-0000-0000-000000000002"),
+                   is_direct_dep=true, version="2.0.0", is_pinned=false),
+    ]
+    apply_filter!(m.installed)
+    m.active_tab = 1
+    m.installed.selected = 1  # PinnedPkg
+
+    # Press 'u' on the pinned package
+    handle_installed_keys!(m, KeyEvent('u'))
+
+    # Should show a modal instead of immediately updating
+    @test m.modal !== nothing
+    @test m.modal_action == :unpin_and_update
+    @test m.modal_target == "PinnedPkg"
+    @test occursin("pinned", m.modal.message)
+    @test m.modal.confirm_label == "Unpin & Update"
+
+    # Cancel the modal
+    m.modal = nothing
+    m.modal_action = nothing
+    m.modal_target = nothing
+
+    # Press 'u' on a non-pinned package — should NOT show modal
+    m.installed.selected = 2  # FreePkg
+    handle_installed_keys!(m, KeyEvent('u'))
+    @test m.modal === nothing  # no modal for non-pinned packages
+
+    # ── Updates tab: 'u' on pinned package shows modal ──
+    m2 = PkgTUIApp()
+    m2.updates_state.updates = [
+        UpdateInfo(name="PinnedPkg", current_version="1.2.3", can_update=true),
+    ]
+    m2.installed.packages = [
+        PackageRow(name="PinnedPkg", uuid=UUID("aaaaaaaa-0000-0000-0000-000000000001"),
+                   is_direct_dep=true, version="1.2.3", is_pinned=true),
+    ]
+    m2.updates_state.selected = 1
+
+    handle_updates_keys!(m2, KeyEvent('u'))
+    @test m2.modal !== nothing
+    @test m2.modal_action == :unpin_and_update
+    @test m2.modal_target == "PinnedPkg"
+end
+
 @testitem "updates tab conflicts focus" tags=[:event] begin
     using Tachikoma
     using PkgTUI: PkgTUIApp, ConflictInfo, UpdateInfo, handle_updates_keys!
