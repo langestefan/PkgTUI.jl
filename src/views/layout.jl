@@ -81,6 +81,82 @@ function render_layout(m::PkgTUIApp, f::Frame)
     render(StatusBar(left = left_spans, right = right_spans), status_row, buf)
 end
 
+# ── Toast notifications ──────────────────────────────────────────────────────
+
+"""Push a non-blocking toast notification (stays until dismissed)."""
+function push_toast!(
+    m::PkgTUIApp,
+    message::String;
+    style::Symbol = :text,
+    icon::String = "",
+    hint::String = "",
+)
+    push!(
+        m.toasts,
+        Toast(; message = message, style = style, icon = icon, hint = hint),
+    )
+end
+
+"""Dismiss the most recent toast notification."""
+function dismiss_toast!(m::PkgTUIApp)
+    isempty(m.toasts) || pop!(m.toasts)
+end
+
+"""
+    render_toasts(m::PkgTUIApp, area::Rect, buf::Buffer)
+
+Render the most recent toast notification centered on screen.
+Uses a prominent double-line border and generous padding.
+"""
+function render_toasts(m::PkgTUIApp, area::Rect, buf::Buffer)
+    isempty(m.toasts) && return
+
+    toast = last(m.toasts)
+
+    # Build content lines
+    main_line = ""
+    if !isempty(toast.icon)
+        main_line *= toast.icon * "  "
+    end
+    main_line *= toast.message
+
+    footer = ""
+    if !isempty(toast.hint)
+        footer = toast.hint * "  ·  "
+    end
+    footer *= "[Esc] close"
+
+    # Size: generous padding around content
+    content_w = max(length(main_line), length(footer)) + 6   # 3 padding each side
+    toast_w = min(content_w + 2, area.width - 4)              # +2 for border chars
+    toast_h = 7  # border + blank + message + blank + footer + blank + border
+
+    toast_rect = center(area, toast_w, toast_h)
+
+    border_style = tstyle(toast.style, bold = true)
+    inner = render(
+        Block(border_style = border_style, box = BOX_DOUBLE),
+        toast_rect,
+        buf,
+    )
+
+    # Center the main message line (row 1 of inner, after top padding)
+    msg_y = inner.y + 1
+    msg_x = inner.x + max(0, (inner.width - length(main_line)) ÷ 2)
+    if !isempty(toast.icon)
+        set_string!(buf, msg_x, msg_y, toast.icon, tstyle(toast.style, bold = true))
+        text_x = msg_x + length(toast.icon) + 2
+        set_string!(buf, text_x, msg_y, toast.message, tstyle(toast.style))
+    else
+        set_string!(buf, msg_x, msg_y, toast.message, tstyle(toast.style))
+    end
+
+    # Center the footer line (row 3 of inner)
+    foot_y = inner.y + 3
+    foot_x = inner.x + max(0, (inner.width - length(footer)) ÷ 2)
+    set_string!(buf, foot_x, foot_y, footer, tstyle(:text_dim))
+end
+
 """
     render_help_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
 

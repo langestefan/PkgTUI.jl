@@ -299,16 +299,13 @@ function handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                 pinned_pkg =
                     findfirst(p -> p.name == name && p.is_pinned, m.installed.packages)
                 if pinned_pkg !== nothing
-                    pkg = m.installed.packages[pinned_pkg]
-                    m.modal = Modal(;
-                        title = "Package Pinned",
-                        message = "'$name' is pinned to v$(something(pkg.version, "?")). Unpin and update?",
-                        confirm_label = "Unpin & Update",
-                        cancel_label = "Cancel",
-                        selected = :cancel,
+                    push_toast!(
+                        m,
+                        "'$name' is pinned — free it first with [f]";
+                        style = :warning,
+                        icon = "⚠",
+                        hint = "[f] free",
                     )
-                    m.modal_action = :unpin_and_update
-                    m.modal_target = name
                 else
                     push_log!(m, "Updating $name...")
                     push!(st.updating_names, name)

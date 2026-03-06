@@ -196,6 +196,16 @@ end
     search_input::TextInput = TextInput(; label = "  Search: ", focused = false)
 end
 
+# ── Toast notifications ───────────────────────────────────────────────────────
+
+"""A non-blocking notification overlay displayed in the center of the screen."""
+@kwdef mutable struct Toast
+    message::String
+    style::Symbol = :text          # :success, :warning, :error, :text, :accent
+    icon::String = ""              # e.g. "✓", "⚠", "✗"
+    hint::String = ""              # e.g. "[t] triage"
+end
+
 # ── Main application model ────────────────────────────────────────────────────
 
 """The top-level PkgTUI application model."""
@@ -233,6 +243,9 @@ end
 
     # ── Triage overlay ──
     triage::TriageState = TriageState()
+
+    # ── Toast notifications ──
+    toasts::Vector{Toast} = Toast[]
 
     # ── Logging ──
     log_pane::ScrollPane = ScrollPane(String[]; following = true)

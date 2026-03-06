@@ -555,7 +555,7 @@ end
     @test m.installed.adding == false
 end
 
-@testitem "update pinned package shows modal" tags = [:event] begin
+@testitem "update pinned package shows toast" tags = [:event] begin
     using Tachikoma
     using UUIDs
     using PkgTUI:
@@ -566,7 +566,7 @@ end
         handle_installed_keys!,
         handle_updates_keys!
 
-    # ── Installed tab: 'u' on pinned package shows confirmation modal ──
+    # ── Installed tab: 'u' on pinned package shows toast notification ──
     m = PkgTUIApp()
     m.installed.packages = [
         PackageRow(
@@ -591,24 +591,20 @@ end
     # Press 'u' on the pinned package
     handle_installed_keys!(m, KeyEvent('u'))
 
-    # Should show a modal instead of immediately updating
-    @test m.modal !== nothing
-    @test m.modal_action == :unpin_and_update
-    @test m.modal_target == "PinnedPkg"
-    @test occursin("pinned", m.modal.message)
-    @test m.modal.confirm_label == "Unpin & Update"
+    # Should show a toast notification instead of a modal
+    @test !isempty(m.toasts)
+    @test occursin("pinned", m.toasts[end].message)
+    @test m.toasts[end].style == :warning
 
-    # Cancel the modal
-    m.modal = nothing
-    m.modal_action = nothing
-    m.modal_target = nothing
+    # Dismiss the toast
+    empty!(m.toasts)
 
-    # Press 'u' on a non-pinned package — should NOT show modal
+    # Press 'u' on a non-pinned package — should NOT show toast
     m.installed.selected = 2  # FreePkg
     handle_installed_keys!(m, KeyEvent('u'))
-    @test m.modal === nothing  # no modal for non-pinned packages
+    @test isempty(m.toasts)  # no toast for non-pinned packages
 
-    # ── Updates tab: 'u' on pinned package shows modal ──
+    # ── Updates tab: 'u' on pinned package shows toast ──
     m2 = PkgTUIApp()
     m2.updates_state.updates =
         [UpdateInfo(name = "PinnedPkg", current_version = "1.2.3", can_update = true)]
@@ -624,9 +620,9 @@ end
     m2.updates_state.selected = 1
 
     handle_updates_keys!(m2, KeyEvent('u'))
-    @test m2.modal !== nothing
-    @test m2.modal_action == :unpin_and_update
-    @test m2.modal_target == "PinnedPkg"
+    @test !isempty(m2.toasts)
+    @test occursin("pinned", m2.toasts[end].message)
+    @test m2.toasts[end].style == :warning
 end
 
 @testitem "updates tab conflicts focus" tags = [:event] begin

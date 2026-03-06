@@ -87,6 +87,9 @@ function Tachikoma.view(m::PkgTUIApp, f::Frame)
     if m.registry.version_picker.show
         render_version_picker(m, f.area, f.buffer)
     end
+
+    # Toast notifications (topmost layer)
+    render_toasts(m, f.area, f.buffer)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -99,7 +102,15 @@ end
 Handle keyboard events. Modal/overlay gets priority, then tab-specific handlers.
 """
 function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
-    # ── Modal handling (highest priority) ──
+    # ── Toast dismiss (highest priority — Esc closes the topmost toast) ──
+    if !isempty(m.toasts)
+        if evt.key == :escape || evt.key == :enter
+            dismiss_toast!(m)
+            return
+        end
+    end
+
+    # ── Modal handling ──
     if m.modal !== nothing
         handle_modal_keys!(m, evt)
         return
@@ -275,27 +286,33 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             end
         end
         m.registry.installing_name = nothing
-        # Status bar: use clean message for errors
+        # Status bar and toast notifications for errors
         if is_error && pkg_name !== nothing
             set_status!(m, "Failed to install $(pkg_name)", :error)
-            # Offer triage modal
+            # Prepare triage data so [t] works immediately
             pkg_log = result isa NamedTuple && hasproperty(result, :log) ? result.log : ""
             m.triage.package_name = pkg_name
             m.triage.error_message = msg
             m.triage.pkg_log = pkg_log
-            m.modal = Modal(;
-                title = "Install Failed",
-                message = "$(pkg_name) failed to install. Open triage window to debug?",
-                confirm_label = "Triage",
-                cancel_label = "Dismiss",
-                selected = :confirm,
+            # Non-blocking toast instead of modal
+            push_toast!(
+                m,
+                "$(pkg_name) failed to install";
+                style = :error,
+                icon = "✗",
+                hint = "[t] triage",
             )
-            m.modal_action = :open_triage
-            m.modal_target = pkg_name
         elseif is_error
             set_status!(m, "Package install failed", :error)
+            push_toast!(
+                m,
+                "Package install failed";
+                style = :error,
+                icon = "✗",
+            )
         else
             set_status!(m, msg, :success)
+            push_toast!(m, msg; style = :success, icon = "✓")
         end
         refresh_all!(m)
 
@@ -304,11 +321,11 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         msg = result isa NamedTuple ? result.result : string(result)
         push_log!(m, msg)
         set_status!(m, msg, :success)
-        # Clear the removed package from installed_names so registry no longer shows "Installed"
         pkg_name =
             result isa NamedTuple && hasproperty(result, :name) ? result.name : nothing
         if pkg_name !== nothing
             delete!(m.registry.installed_names, pkg_name)
+            push_toast!(m, "Removed $(pkg_name)"; style = :success, icon = "✓")
         end
         refresh_all!(m)
 
@@ -325,14 +342,15 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             if pkg_name !== nothing
                 delete!(m.updates_state.updating_names, pkg_name)
                 push!(m.updates_state.updated_names, pkg_name)
+                push_toast!(m, "Updated $(pkg_name)"; style = :success, icon = "✓")
             end
         elseif evt.id == :update_all
             m.updates_state.update_all_running = false
-            # Mark all packages in the updates list as updated
             for info in m.updates_state.updates
                 push!(m.updates_state.updated_names, info.name)
             end
             empty!(m.updates_state.updating_names)
+            push_toast!(m, "All packages updated"; style = :success, icon = "✓")
         end
 
         refresh_all!(m)
@@ -342,6 +360,8 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         msg = result isa NamedTuple ? result.result : string(result)
         push_log!(m, msg)
         set_status!(m, msg, :success)
+        action_word = evt.id == :pin ? "Pinned" : "Freed"
+        push_toast!(m, msg; style = :success, icon = "✓")
         refresh_all!(m)
 
     elseif evt.id == :fetch_outdated
@@ -375,7 +395,10 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         m.metrics.metrics = metrics
         m.metrics.profile_progress = 0.5
         direct_count = count(mi -> mi.is_direct, metrics)
-        push_log!(m, "Disk sizes measured ($(length(metrics)) pkgs). Profiling load times for $(direct_count) direct dependencies...")
+        push_log!(
+            m,
+            "Disk sizes measured ($(length(metrics)) pkgs). Profiling load times for $(direct_count) direct dependencies...",
+        )
 
         # Capture project info on the main thread — Pkg.project() is not
         # reliable from a spawned task (thread-local state).
@@ -407,8 +430,12 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             push_log!(m, "No timing data could be collected.")
             set_status!(m, "Profiling complete (no timing data)", :warning)
         else
-            push_log!(m, "Profiling complete. $(timed_count)/$(length(timings)) timed" *
-                (err_count > 0 ? ", $(err_count) errors" : "") * ".")
+            push_log!(
+                m,
+                "Profiling complete. $(timed_count)/$(length(timings)) timed" *
+                (err_count > 0 ? ", $(err_count) errors" : "") *
+                ".",
+            )
             set_status!(m, "Profiling complete", :success)
         end
 
@@ -560,6 +587,7 @@ function handle_task_error!(m::PkgTUIApp, id::Symbol, err::Exception)
         push_log!(m, "  " * line)
     end
     set_status!(m, short_msg, :error)
+    push_toast!(m, short_msg; style = :error, icon = "✗", hint = "[l] log")
 
     # Reset loading states
     if id == :fetch_installed
