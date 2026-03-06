@@ -1,10 +1,22 @@
 name = "PkgTUI"
 uuid = "54278dea-1893-5142-a07c-601f49d9aabd"
-authors = ["Stefan de Lange <langestefan@msn.com>"]
 version = "0.1.0"
+authors = ["Stefan de Lange <langestefan@msn.com>"]
 
 [workspace]
 projects = ["test", "docs"]
 
+[deps]
+Match = "7eb4fadd-790c-5f42-8a69-bfa0b872bfbf"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+Tachikoma = "468859d6-42d8-48b7-8ad9-1d312e0e3b0a"
+UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
+
 [compat]
+Match = "2"
+Tachikoma = "1"
 julia = "1.10"
+
+[apps.pkgtui]
+julia_flags = ["--threads=auto"]
