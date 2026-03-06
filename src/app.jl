@@ -265,7 +265,7 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
 
     elseif evt.id == :compile_profile
         timings = evt.value::Vector{Tuple{String, Float64}}
-        # Merge compile times into existing metrics
+        # Merge compile/load times into existing metrics
         timing_map = Dict(name => secs for (name, secs) in timings)
         for m_item in m.metrics.metrics
             m_item.compile_time_seconds = get(timing_map, m_item.name, 0.0)
@@ -273,10 +273,10 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         m.metrics.profiling = false
         m.metrics.profile_progress = 1.0
         if isempty(timings)
-            push_log!(m, "All packages already precompiled — no timing data available.")
-            set_status!(m, "All packages already precompiled", :success)
+            push_log!(m, "No timing data could be collected.")
+            set_status!(m, "Profiling complete (no timing data)", :warning)
         else
-            push_log!(m, "Profiling complete. $(length(timings)) packages profiled.")
+            push_log!(m, "Profiling complete. $(length(timings)) packages timed.")
             set_status!(m, "Profiling complete", :success)
         end
 

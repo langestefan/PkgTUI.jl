@@ -293,10 +293,13 @@ end
 """
     run_precompile_profiling(io::IOBuffer) → Vector{Tuple{String, Float64}}
 
-Run `Pkg.precompile(; timing=true)` and parse the output to extract
-per-package compile times. Returns [(name, seconds), ...].
+Try `Pkg.precompile(; timing=true)` first.  When every package is already
+cached (the common case) that returns nothing, so we fall back to measuring
+**load times** in a fresh Julia subprocess.
+Returns [(name, seconds), ...] sorted by time descending.
 """
 function run_precompile_profiling(io::IOBuffer)::Vector{Tuple{String, Float64}}
+    # ── Attempt 1: Pkg.precompile timing ──────────────────────────────────
     buf = IOBuffer()
     Pkg.precompile(; timing=true, io=buf)
     raw = String(take!(buf))
@@ -322,7 +325,62 @@ function run_precompile_profiling(io::IOBuffer)::Vector{Tuple{String, Float64}}
         end
     end
 
+    if !isempty(timings)
+        sort!(timings; by=last, rev=true)
+        return timings
+    end
+
+    # ── Attempt 2: measure load times in a fresh subprocess ───────────────
+    timings = _measure_load_times()
     sort!(timings; by=last, rev=true)
+    return timings
+end
+
+"""
+    _measure_load_times() → Vector{Tuple{String, Float64}}
+
+Spawn a fresh Julia process that `import`s each direct dependency and reports
+the elapsed time.  This always produces data regardless of precompile state.
+"""
+function _measure_load_times()::Vector{Tuple{String, Float64}}
+    proj = Pkg.project()
+    proj_dir = proj.path !== nothing ? dirname(proj.path) : nothing
+    proj_dir === nothing && return Tuple{String, Float64}[]
+
+    dep_names = collect(keys(proj.dependencies))
+    isempty(dep_names) && return Tuple{String, Float64}[]
+
+    # Script that measures `import` time for each package in the same process.
+    # Packages are loaded sequentially; each measurement is independent because
+    # `import` is idempotent (first call pays the cost, subsequent ones ~0s).
+    # Using a single process keeps startup overhead to a minimum.
+    script = raw"""
+    for name in ARGS
+        try
+            sym = Symbol(name)
+            t = @elapsed Base.require(Main, sym)
+            println(name, "\t", t)
+        catch
+            println(name, "\t", 0.0)
+        end
+    end
+    """
+
+    timings = Tuple{String, Float64}[]
+    try
+        cmd = `$(Base.julia_cmd()) --project=$proj_dir --startup-file=no -e $script -- $dep_names`
+        output = read(cmd, String)
+        for line in split(output, '\n')
+            parts = split(strip(line), '\t')
+            length(parts) == 2 || continue
+            name = String(parts[1])
+            secs = tryparse(Float64, parts[2])
+            secs !== nothing && push!(timings, (name, secs))
+        end
+    catch
+        # Subprocess failed — return what we have
+    end
+
     return timings
 end
 

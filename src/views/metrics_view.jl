@@ -1,5 +1,5 @@
 """
-    Metrics tab view — disk size and compile time visualization.
+    Metrics tab view — disk size and load time visualization.
 """
 
 """
@@ -15,7 +15,7 @@ function render_metrics_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     # ── Summary bar ──
     summary_inner = render(Block(
-        title=st.view_mode == :size ? "Disk Size Metrics" : "Compile Time Metrics",
+        title=st.view_mode == :size ? "Disk Size Metrics" : "Load Time Metrics",
         border_style=tstyle(:border)
     ), rows[1], buf)
 
@@ -27,12 +27,12 @@ function render_metrics_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         summary = "$(length(st.metrics)) packages │ " *
                   "$(direct_count) direct │ " *
                   "Total disk: $(format_bytes(total_size)) │ " *
-                  "Total compile: $(format_time(total_compile))"
+                  "Total load: $(format_time(total_compile))"
 
         set_string!(buf, summary_inner.x + 1, summary_inner.y,
             summary, tstyle(:text))
     elseif st.loading || st.profiling
-        msg = st.profiling ? "Profiling compile times..." : "Measuring disk sizes..."
+        msg = st.profiling ? "Profiling load times..." : "Measuring disk sizes..."
         set_string!(buf, summary_inner.x + 1, summary_inner.y,
             msg, tstyle(:text_dim, italic=true))
     else
@@ -59,11 +59,11 @@ function render_metrics_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     # ── Hints ──
     render(StatusBar(
         left=[
-            Span("  [s]witch size/compile ", tstyle(:accent)),
+            Span("  [s]witch size/load ", tstyle(:accent)),
             Span("[r]un profiling ", tstyle(:accent)),
         ],
         right=[
-            Span(st.view_mode == :size ? "Size View " : "Compile View ", tstyle(:text_dim)),
+            Span(st.view_mode == :size ? "Size View " : "Load Time View ", tstyle(:text_dim)),
         ],
     ), rows[3], buf)
 end
@@ -71,7 +71,7 @@ end
 """Render the bar chart of top packages by size or compile time."""
 function render_metrics_chart(st::MetricsState, area::Rect, buf::Buffer)
     inner = render(Block(
-        title=st.view_mode == :size ? "Top by Disk Size" : "Top by Compile Time",
+        title=st.view_mode == :size ? "Top by Disk Size" : "Top by Load Time",
         border_style=tstyle(:border)
     ), area, buf)
 
@@ -118,7 +118,7 @@ function render_metrics_table(st::MetricsState, area::Rect, buf::Buffer)
     h_style = tstyle(:title, bold=true)
     set_string!(buf, x, y, "Name", h_style)
     set_string!(buf, x + 25, y, "Disk Size", h_style)
-    set_string!(buf, x + 38, y, "Compile", h_style)
+    set_string!(buf, x + 38, y, "Load", h_style)
     set_string!(buf, x + 48, y, "Type", h_style)
     y += 1
     for bx in inner.x:(inner.x + inner.width - 1)
@@ -149,7 +149,7 @@ function render_profiling_progress(m::PkgTUIApp, area::Rect, buf::Buffer)
     # Simple progress indicator
     y = inner.y + div(inner.height, 2) - 1
     set_string!(buf, inner.x + 2, y,
-        "Running Pkg.precompile(; timing=true)...", tstyle(:accent, bold=true))
+        "Measuring package load times...", tstyle(:accent, bold=true))
 
     progress = m.metrics.profile_progress
     gauge_area = Rect(inner.x + 2, y + 2, inner.width - 4, 1)
@@ -159,7 +159,7 @@ function render_profiling_progress(m::PkgTUIApp, area::Rect, buf::Buffer)
     end
 
     set_string!(buf, inner.x + 2, y + 4,
-        "This may take a while. Packages are being precompiled with timing enabled.",
+        "This may take a while. Loading each package in a fresh process.",
         tstyle(:text_dim))
 end
 
