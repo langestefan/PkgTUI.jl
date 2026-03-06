@@ -208,9 +208,11 @@ end
     using PkgTUI: format_time
 
     @test format_time(0.0) == "—"
-    @test format_time(0.5) == "500ms"
-    @test format_time(1.5) == "1.5s"
-    @test format_time(90.0) == "1m 30.0s"
+    @test format_time(0.5) == "500 ms"
+    @test format_time(1.5) == "1500 ms"
+    @test format_time(0.005) == "5.0 ms"
+    @test format_time(0.0023) == "2.3 ms"
+    @test format_time(0.00012) == "0.12 ms"
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

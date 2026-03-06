@@ -88,7 +88,7 @@ function render_metrics_chart(st::MetricsState, area::Rect, buf::Buffer)
     entries = if st.view_mode == :size
         [BarEntry(m.name, Float64(m.disk_size_bytes) / 1024.0) for m in top_n]
     else
-        [BarEntry(m.name, m.compile_time_seconds) for m in top_n]
+        [BarEntry(m.name, m.compile_time_seconds * 1000.0) for m in top_n]
     end
 
     render(BarChart(entries; block=Block()), inner, buf)
@@ -222,17 +222,18 @@ function format_bytes(bytes::Int64)::String
     end
 end
 
-"""Format seconds as human-readable string."""
+"""Format seconds as milliseconds string."""
 function format_time(seconds::Float64)::String
     if seconds == 0.0
         return "—"
-    elseif seconds < 1.0
-        return "$(round(Int, seconds * 1000))ms"
-    elseif seconds < 60.0
-        return "$(round(seconds; digits=1))s"
     else
-        mins = floor(Int, seconds / 60)
-        secs = round(seconds - mins * 60; digits=1)
-        return "$(mins)m $(secs)s"
+        ms = seconds * 1000.0
+        if ms < 10.0
+            return "$(round(ms; digits=2)) ms"
+        elseif ms < 100.0
+            return "$(round(ms; digits=1)) ms"
+        else
+            return "$(round(Int, ms)) ms"
+        end
     end
 end
