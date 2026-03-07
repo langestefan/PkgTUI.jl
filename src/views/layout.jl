@@ -182,6 +182,13 @@ Render a full-screen help overlay with keybinding reference.
 """
 function render_help_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     help_rect = center(area, min(area.width - 4, 70), min(area.height - 4, 30))
+
+    # Clear the background behind the help overlay so underlying text doesn't bleed through
+    blank = " "^help_rect.width
+    for y = help_rect.y:(help_rect.y+help_rect.height-1)
+        set_string!(buf, help_rect.x, y, blank, tstyle(:text))
+    end
+
     inner = render(
         Block(title = "Help — PkgTUI", border_style = tstyle(:accent), box = BOX_DOUBLE),
         help_rect,
