@@ -43,7 +43,8 @@ pkgtui(; project="/path/to/MyProject")
 > [!NOTE]
 > You need to manually make ~/.julia/bin available on the PATH environment.
 > The path to the julia executable used is the same as the one used to install the app. 
-> If this julia installation gets removed, you might need to reinstall the app.
+> If this julia installation gets removed, you might need to reinstall the app. See the
+> [Pkg App documentation](https://pkgdocs.julialang.org/dev/apps/) for more details.
 
 ## Features
 
