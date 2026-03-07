@@ -4,10 +4,8 @@ exclude = [
   "^https://github.com/.*/releases/tag/v.*$",
   "^https://doi.org/FIXME$",
   "^https://langestefan.github.io/PkgTUI.jl/stable$",
-  "^https://blog.esciencecenter.nl", # due to a certificate error (cf. #556)
-  "zenodo.org/badge/DOI/FIXME$"
+  "^https://blog.esciencecenter.nl",                  # due to a certificate error (cf. #556)
+  "zenodo.org/badge/DOI/FIXME$",
 ]
 
-exclude_path = [
-  "docs/build"
-]
+exclude_path = []
