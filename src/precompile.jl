@@ -204,8 +204,10 @@ using PrecompileTools
     # eagerly evaluates _tty_size which shells out to `stty size`.
     _prev_stderr = stderr
     redirect_stderr(devnull)
-    _null_dev = Sys.iswindows() ? "NUL" : "/dev/null"
-    Tachikoma.with_terminal(; tty_out = _null_dev, tty_size = (rows = 40, cols = 120)) do _t
+    Tachikoma.with_terminal(;
+        tty_out = "/dev/null",
+        tty_size = (rows = 40, cols = 120),
+    ) do _t
         _overlay = Tachikoma.AppOverlay()
 
         # First draw — exercises Frame construction, view, flush!, ANSI output
