@@ -43,11 +43,7 @@ using PrecompileTools
     _m.installed.loading = false
 
     # Fake project info
-    _m.project_info = ProjectInfo(
-        name = "PrecompileEnv",
-        dep_count = 2,
-        is_package = true,
-    )
+    _m.project_info = ProjectInfo(name = "PrecompileEnv", dep_count = 2, is_package = true)
 
     # Fake updates
     _fake_updates = [
@@ -81,16 +77,15 @@ using PrecompileTools
     ]
 
     # Fake registry data
-    _m.registry.registry_index = [
-        RegistryPackage(name = "FakePackage", latest_version = "1.3.0"),
-    ]
+    _m.registry.registry_index =
+        [RegistryPackage(name = "FakePackage", latest_version = "1.3.0")]
     _m.registry.results = _m.registry.registry_index
     _m.registry.index_loaded = true
 
     push_line!(_m.log_pane, "Precompile workload log entry")
 
     # ── Exercise all 6 tab renders ──────────────────────────────────────────
-    for tab in 1:6
+    for tab = 1:6
         _m.active_tab = tab
         _buf2 = Buffer(_rect)
         _f2 = Frame(
@@ -150,7 +145,7 @@ using PrecompileTools
     # These compile the update! dispatch paths without side effects
 
     # Navigation keys
-    for tab in 1:6
+    for tab = 1:6
         _m.active_tab = tab
         Tachikoma.update!(_m, KeyEvent(:up))
         Tachikoma.update!(_m, KeyEvent(:down))
@@ -189,14 +184,8 @@ using PrecompileTools
     _m.quit = false
 
     # TaskEvent handling — exercise the update! dispatch for task results
-    Tachikoma.update!(
-        _m,
-        TaskEvent(:fetch_project, _m.project_info),
-    )
-    Tachikoma.update!(
-        _m,
-        TaskEvent(:fetch_installed, _fake_pkgs),
-    )
+    Tachikoma.update!(_m, TaskEvent(:fetch_project, _m.project_info))
+    Tachikoma.update!(_m, TaskEvent(:fetch_installed, _fake_pkgs))
     _m.quit = false
 
     # ── Exercise the Tachikoma terminal pipeline headlessly ────────────
@@ -210,11 +199,11 @@ using PrecompileTools
     _m2.installed.packages = _fake_pkgs
     _m2.installed.filtered = _fake_pkgs
     _m2.installed.loading = false
-    _m2.project_info = ProjectInfo(
-        name = "PrecompileEnv",
-        dep_count = 2,
-        is_package = true,
-    )
+    _m2.project_info = ProjectInfo(name = "PrecompileEnv", dep_count = 2, is_package = true)
+    # Suppress "stty: Inappropriate ioctl" warnings: Tachikoma's with_terminal
+    # eagerly evaluates _tty_size("/dev/null") which shells out to `stty size`.
+    _prev_stderr = stderr
+    redirect_stderr(devnull)
     Tachikoma.with_terminal(;
         tty_out = "/dev/null",
         tty_size = (rows = 40, cols = 120),
@@ -234,13 +223,9 @@ using PrecompileTools
         end
 
         # Exercise dispatch_event! (compiles the full event→update! pipeline)
-        Tachikoma.dispatch_event!(
-            _t, _overlay, _m2, KeyEvent(:down), true,
-        )
+        Tachikoma.dispatch_event!(_t, _overlay, _m2, KeyEvent(:down), true)
         _m2.quit = false
-        Tachikoma.dispatch_event!(
-            _t, _overlay, _m2, KeyEvent(:up), true,
-        )
+        Tachikoma.dispatch_event!(_t, _overlay, _m2, KeyEvent(:up), true)
         _m2.quit = false
 
         # Exercise TaskQueue drain (used every frame in app loop)
@@ -249,11 +234,10 @@ using PrecompileTools
             42
         end
         Tachikoma.drain_tasks!(_tq) do _tevt
-            Tachikoma.dispatch_event!(
-                _t, _overlay, _m2, _tevt, true,
-            )
+            Tachikoma.dispatch_event!(_t, _overlay, _m2, _tevt, true)
         end
         close(_tq.channel)
         _m2.quit = false
     end
+    redirect_stderr(_prev_stderr)
 end
