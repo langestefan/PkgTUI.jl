@@ -52,10 +52,7 @@ function render_triage_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
         StatusBar(
             left = [
                 Span("  ↑↓←→ scroll ", tstyle(:text_dim)),
-                Span(
-                    "[c]ompat ",
-                    tr.compat_expanded ? tstyle(:success) : tstyle(:accent),
-                ),
+                Span("[c]ompat ", tr.compat_expanded ? tstyle(:success) : tstyle(:accent)),
                 Span(
                     "[o]utput ",
                     tr.pkg_output_expanded ? tstyle(:success) : tstyle(:accent),
@@ -131,7 +128,12 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
 
             # Non-conflict sections (collapsible)
             if !isempty(nonconflict_bars)
-                n_nc = length(filter(b -> any(s -> occursin(r"^    [A-Z]", s.content), b), nonconflict_bars))
+                n_nc = length(
+                    filter(
+                        b -> any(s -> occursin(r"^    [A-Z]", s.content), b),
+                        nonconflict_bars,
+                    ),
+                )
                 if tr.compat_expanded
                     push!(
                         lines,
@@ -616,7 +618,11 @@ Non-conflict packages are shown separately with their own sections.
 Use `only=:conflict` to emit only conflict sections, `only=:nonconflict`
 for only non-conflict sections, or `only=:all` (default) for both.
 """
-function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int; only::Symbol = :all)::Vector{Vector{Span}}
+function _build_ver_bars(
+    pkgs::Vector{_PkgVerInfo},
+    line_w::Int;
+    only::Symbol = :all,
+)::Vector{Vector{Span}}
     lines = Vector{Span}[]
 
     # Compute label width dynamically from all labels that will appear
@@ -764,100 +770,106 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int; only::Symbol = 
     end
 
     if only != :nonconflict
-    for target_name in conflict_targets
-        haskey(pkg_by_name, target_name) || continue
-        target = pkg_by_name[target_name]
+        for target_name in conflict_targets
+            haskey(pkg_by_name, target_name) || continue
+            target = pkg_by_name[target_name]
 
-        # Header
-        push!(lines, [Span("    ✗ Conflict: $(target_name)", tstyle(:error, bold = true))])
+            # Header
+            push!(
+                lines,
+                [Span("    ✗ Conflict: $(target_name)", tstyle(:error, bold = true))],
+            )
 
-        # Compute per-section axis from this target's ranges only
-        sec_min, sec_max, sec_range =
-            _section_axis(target.possible_min, target.possible_max, target.constraints)
+            # Compute per-section axis from this target's ranges only
+            sec_min, sec_max, sec_range =
+                _section_axis(target.possible_min, target.possible_max, target.constraints)
 
-        # Bar chart: Available range of the conflict target
-        push!(
-            lines,
-            range_spans(
-                "Available",
-                target.possible_min,
-                target.possible_max,
-                :success,
-                sec_min,
-                sec_range,
-            ),
-        )
+            # Bar chart: Available range of the conflict target
+            push!(
+                lines,
+                range_spans(
+                    "Available",
+                    target.possible_min,
+                    target.possible_max,
+                    :success,
+                    sec_min,
+                    sec_range,
+                ),
+            )
 
-        # One bar per constraint on this target, sorted by first range min ascending
-        # so bars appear left-to-right on the chart.
-        sorted_cs = sort(
-            target.constraints;
-            by = c -> isempty(c.ranges) ? Inf : _ver_to_num(first(c.ranges)[1]),
-        )
-        for c in sorted_cs
-            c.source == "fixed" && continue   # skip "fixed" — not a requirer
-            if c.is_conflict
-                if !isempty(c.ranges)
-                    # Conflict constraint with known range(s)
-                    push!(
-                        lines,
-                        range_spans(c.source, c.ranges, :error, sec_min, sec_range),
-                    )
+            # One bar per constraint on this target, sorted by first range min ascending
+            # so bars appear left-to-right on the chart.
+            sorted_cs = sort(
+                target.constraints;
+                by = c -> isempty(c.ranges) ? Inf : _ver_to_num(first(c.ranges)[1]),
+            )
+            for c in sorted_cs
+                c.source == "fixed" && continue   # skip "fixed" — not a requirer
+                if c.is_conflict
+                    if !isempty(c.ranges)
+                        # Conflict constraint with known range(s)
+                        push!(
+                            lines,
+                            range_spans(c.source, c.ranges, :error, sec_min, sec_range),
+                        )
+                    else
+                        # Conflict constraint without range (e.g., "to versions: uninstalled")
+                        lbl = rpad(c.source, label_w)
+                        push!(
+                            lines,
+                            [
+                                Span("    $lbl", tstyle(:text_dim)),
+                                Span("✗ none", tstyle(:error)),
+                            ],
+                        )
+                    end
                 else
-                    # Conflict constraint without range (e.g., "to versions: uninstalled")
-                    lbl = rpad(c.source, label_w)
                     push!(
                         lines,
-                        [
-                            Span("    $lbl", tstyle(:text_dim)),
-                            Span("✗ none", tstyle(:error)),
-                        ],
+                        range_spans(c.source, c.ranges, :warning, sec_min, sec_range),
                     )
                 end
-            else
-                push!(lines, range_spans(c.source, c.ranges, :warning, sec_min, sec_range))
             end
-        end
 
-        push!(
-            lines,
-            [
-                Span("    $(rpad("Intersection", label_w))", tstyle(:text_dim)),
-                Span("✗ none", tstyle(:error)),
-            ],
-        )
-        push!(lines, [Span("")])
-    end
+            push!(
+                lines,
+                [
+                    Span("    $(rpad("Intersection", label_w))", tstyle(:text_dim)),
+                    Span("✗ none", tstyle(:error)),
+                ],
+            )
+            push!(lines, [Span("")])
+        end
     end  # only != :nonconflict
 
     # ── 3. Non-conflict package sections (only those not involved in a conflict) ──
     if only != :conflict
-    for pkg in pkgs
-        pkg.name in shown_in_conflict && continue
+        for pkg in pkgs
+            pkg.name in shown_in_conflict && continue
 
-        non_conflict_cs = filter(c -> !c.is_conflict, pkg.constraints)
+            non_conflict_cs = filter(c -> !c.is_conflict, pkg.constraints)
 
-        # Compute per-section axis from this package's ranges only
-        sec_min, sec_max, sec_range =
-            _section_axis(pkg.possible_min, pkg.possible_max, non_conflict_cs)
+            # Compute per-section axis from this package's ranges only
+            sec_min, sec_max, sec_range =
+                _section_axis(pkg.possible_min, pkg.possible_max, non_conflict_cs)
 
-        push!(lines, [Span("    $(pkg.name)", tstyle(:accent, bold = true))])
-        push!(
-            lines,
-            range_spans(
-                "Available",
-                pkg.possible_min,
-                pkg.possible_max,
-                :success,
-                sec_min,
-                sec_range,
-            ),
-        )
-        for c in non_conflict_cs
-            push!(lines, range_spans(c.source, c.ranges, :warning, sec_min, sec_range))
+            push!(lines, [Span("    $(pkg.name)", tstyle(:accent, bold = true))])
+            push!(
+                lines,
+                range_spans(
+                    "Available",
+                    pkg.possible_min,
+                    pkg.possible_max,
+                    :success,
+                    sec_min,
+                    sec_range,
+                ),
+            )
+            for c in non_conflict_cs
+                push!(lines, range_spans(c.source, c.ranges, :warning, sec_min, sec_range))
+            end
+            push!(lines, [Span("")])
         end
-        push!(lines, [Span("")])
-    end
     end  # only != :conflict
 
     return lines

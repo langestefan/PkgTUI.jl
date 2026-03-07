@@ -2,7 +2,6 @@ module PkgTUI
 
 using Tachikoma
 @tachikoma_app
-using Match
 import Pkg
 using TOML
 using UUIDs
@@ -29,6 +28,9 @@ include("views/log_view.jl")
 
 # App orchestration (view, update!, init!, cleanup!)
 include("app.jl")
+
+# Precompile workload — caches native code for fast startup
+include("precompile.jl")
 
 export pkgtui
 

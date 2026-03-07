@@ -739,10 +739,11 @@ end
     using PkgTUI
 
     # Capture --help output via a Pipe
+    old_stdout = stdout
     rd, wr = redirect_stdout()
     ret = PkgTUI.main(["--help"])
     @test ret == 0
-    redirect_stdout()
+    redirect_stdout(old_stdout)
     close(wr)
     help_text = read(rd, String)
     close(rd)
@@ -1243,9 +1244,13 @@ end
 
     # _parse_ver_ranges safety net: handles "leaving only versions" even if
     # passed directly (e.g., from a future unmatched regex pattern)
-    r = _parse_ver_ranges("1.0.0 - 1.4.0 or uninstalled, leaving only versions: uninstalled")
+    r = _parse_ver_ranges(
+        "1.0.0 - 1.4.0 or uninstalled, leaving only versions: uninstalled",
+    )
     @test r == [("1.0.0", "1.4.0")]
-    r2 = _parse_ver_ranges("1.6.0 - 2.2.1 or uninstalled, leaving only versions: 1.10.0 - 2.2.1")
+    r2 = _parse_ver_ranges(
+        "1.6.0 - 2.2.1 or uninstalled, leaving only versions: 1.10.0 - 2.2.1",
+    )
     @test r2 == [("1.6.0", "2.2.1")]
 end
 
