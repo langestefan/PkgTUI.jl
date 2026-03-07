@@ -1,11 +1,11 @@
 """
-    Dependencies tab view — tree and graph visualization.
+    Dependencies tab view — two-panel dependency explorer.
 """
 
 """
     render_dependencies_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
 
-Render the "Dependencies" tab with tree or graph view.
+Render the "Dependencies" tab with two-panel explorer (package list + detail).
 """
 function render_dependencies_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     st = m.deps
@@ -20,11 +20,7 @@ function render_dependencies_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     rows = split_layout(Layout(Vertical, constraints), area)
 
     # ── Main content ──
-    if st.show_graph
-        render_dep_graph(m, rows[1], buf)
-    else
-        render_dep_tree(m, rows[1], buf)
-    end
+    render_dep_graph(m, rows[1], buf)
 
     # ── Why output panel ──
     if has_why
@@ -42,134 +38,17 @@ function render_dependencies_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
     render(
         StatusBar(
             left = [
-                Span("  [g]raph/tree ", tstyle(:accent)),
-                Span("[w]hy ", tstyle(:accent)),
-                Span("[Enter] expand ", tstyle(:text_dim)),
+                Span("  [w]hy ", tstyle(:accent)),
+                Span("[↑↓] navigate ", tstyle(:text_dim)),
             ],
-            right = [Span(st.show_graph ? "Graph View " : "Tree View ", tstyle(:text_dim))],
+            right = [Span("Explorer ", tstyle(:text_dim))],
         ),
         rows[end],
         buf,
     )
 end
 
-"""Render the tree view of dependencies (linux `tree`-style connectors)."""
-function render_dep_tree(m::PkgTUIApp, area::Rect, buf::Buffer)
-    st = m.deps
 
-    inner = render(
-        Block(
-            title = st.loading ? "Loading..." : "Dependency Tree",
-            border_style = tstyle(:border),
-        ),
-        area,
-        buf,
-    )
-
-    if st.loading
-        set_string!(
-            buf,
-            inner.x + 2,
-            inner.y + 1,
-            "Building dependency tree...",
-            tstyle(:text_dim, italic = true),
-        )
-    elseif st.tree_view !== nothing
-        _render_tree_linux_style(st.tree_view, inner, buf)
-    else
-        set_string!(
-            buf,
-            inner.x + 2,
-            inner.y + 1,
-            "No dependencies found.",
-            tstyle(:text_dim),
-        )
-    end
-end
-
-"""
-    _render_tree_linux_style(tv, area, buf)
-
-Custom tree renderer that mimics the Linux `tree` command output:
-```
-.
-├── Dates v1.11.0
-│   ├── Printf v1.11.0
-│   └── Unicode v1.11.0
-└── JuMP v1.29.4
-    ├── LinearAlgebra v1.12.0
-    └── MathOptInterface v1.49.0
-```
-Uses 4-char wide columns: `├── `, `└── `, `│   `, `    `.
-"""
-function _render_tree_linux_style(tv::TreeView, area::Rect, buf::Buffer)
-    (area.width < 1 || area.height < 1) && return
-    tv.last_area = area
-
-    flat = Tachikoma.flatten_tree(tv.root, tv.show_root)
-    n = length(flat)
-    visible_h = area.height
-
-    # Auto-scroll to keep selection visible
-    if tv.selected >= 1
-        if tv.selected - 1 < tv.offset
-            tv.offset = tv.selected - 1
-        elseif tv.selected > tv.offset + visible_h
-            tv.offset = tv.selected - visible_h
-        end
-    end
-
-    max_cx = right(area)
-    conn_style = tv.connector_style
-    # When show_root=true, parent_lasts[1] is the root's is_last (always true),
-    # so we offset by 1 to skip it and align columns with actual ancestors.
-    pl_offset = tv.show_root ? 1 : 0
-
-    for i = 1:visible_h
-        idx = tv.offset + i
-        idx > n && break
-        row = flat[idx]
-        y = area.y + i - 1
-        cx = area.x
-
-        if row.depth > 0
-            # Ancestor continuation lines: "│   " or "    " (4 chars each)
-            for d = 1:(row.depth-1)
-                pidx = d + pl_offset
-                if pidx <= length(row.parent_lasts) && !row.parent_lasts[pidx]
-                    # Continuing ancestor — draw vertical bar
-                    cx <= max_cx && set_char!(buf, cx, y, '│', conn_style)
-                end
-                cx += 4
-            end
-
-            # Branch connector: "├── " or "└── " (4 chars)
-            if row.is_last
-                cx <= max_cx && set_char!(buf, cx, y, '└', conn_style)
-                cx + 1 <= max_cx && set_char!(buf, cx + 1, y, '─', conn_style)
-                cx + 2 <= max_cx && set_char!(buf, cx + 2, y, '─', conn_style)
-            else
-                cx <= max_cx && set_char!(buf, cx, y, '├', conn_style)
-                cx + 1 <= max_cx && set_char!(buf, cx + 1, y, '─', conn_style)
-                cx + 2 <= max_cx && set_char!(buf, cx + 2, y, '─', conn_style)
-            end
-            cx += 4  # connector (1) + dashes (2) + space (1) = 4
-        end
-
-        # Label (no expand indicator — matches `tree` style)
-        cx > max_cx && continue
-        style = (tv.selected == idx) ? tv.selected_style : row.style
-        set_string!(buf, cx, y, row.label, style; max_x = max_cx)
-    end
-
-    # Scroll indicators
-    if tv.offset > 0
-        set_char!(buf, right(area), area.y, '▲', tstyle(:text_dim))
-    end
-    if tv.offset + visible_h < n
-        set_char!(buf, right(area), bottom(area), '▼', tstyle(:text_dim))
-    end
-end
 
 """Render a two-panel dependency explorer: package list + detail view."""
 function render_dep_graph(m::PkgTUIApp, area::Rect, buf::Buffer)
@@ -371,10 +250,7 @@ function handle_dependencies_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
 
     if evt.key == :char
         c = evt.char
-        if c == 'g'
-            st.show_graph = !st.show_graph
-            return true
-        elseif c == 'w'
+        if c == 'w'
             # Find selected package name for Pkg.why
             pkg_name = get_selected_dep_name(st, m)
             if pkg_name !== nothing
@@ -388,15 +264,8 @@ function handle_dependencies_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
         end
     end
 
-    # Delegate to TreeView if in tree mode
-    if !st.show_graph && st.tree_view !== nothing
-        if handle_key!(st.tree_view, evt)
-            return true
-        end
-    end
-
-    # Graph mode navigation
-    if st.show_graph && !isempty(m.installed.packages)
+    # Navigation
+    if !isempty(m.installed.packages)
         if evt.key == :up || evt.key == :down
             delta = evt.key == :up ? -1 : 1
             st.graph_selected =
@@ -410,19 +279,9 @@ end
 
 """Get the name of the currently selected dependency."""
 function get_selected_dep_name(st::DependenciesState, m::PkgTUIApp)::Union{String,Nothing}
-    if st.show_graph && !isempty(m.installed.packages)
+    if !isempty(m.installed.packages)
         idx = clamp(st.graph_selected, 1, length(m.installed.packages))
         return m.installed.packages[idx].name
-    end
-    # Tree mode: get selected label from TreeView's flattened rows
-    if st.tree_view !== nothing && st.tree_view.selected >= 1
-        flat = Tachikoma.flatten_tree(st.tree_view.root, st.tree_view.show_root)
-        if st.tree_view.selected <= length(flat)
-            label = flat[st.tree_view.selected].label
-            # Labels look like "PackageName vX.Y.Z" — extract the name part
-            parts = split(label)
-            return isempty(parts) ? nothing : String(first(parts))
-        end
     end
     return nothing
 end

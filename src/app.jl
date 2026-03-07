@@ -247,13 +247,6 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         push_log!(m, "Loaded $(length(packages)) packages.")
         set_status!(m, "$(length(packages)) packages loaded", :success)
 
-        # Build dependency tree
-        if !isempty(packages)
-            tree_root = build_dependency_tree(packages)
-            m.deps.tree_root = tree_root
-            m.deps.tree_view = TreeView(tree_root; block = Block())
-        end
-
     elseif evt.id == :build_registry_index
         m.registry.registry_index = evt.value::Vector{RegistryPackage}
         m.registry.index_loaded = true
@@ -309,6 +302,7 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             # Prepare triage data so [t] works immediately
             pkg_log = result isa NamedTuple && hasproperty(result, :log) ? result.log : ""
             m.triage.package_name = pkg_name
+            m.triage.version = result isa NamedTuple && hasproperty(result, :version) ? result.version : ""
             m.triage.error_message = msg
             m.triage.pkg_log = pkg_log
             # Non-blocking toast instead of modal
@@ -657,7 +651,7 @@ Launch the PkgTUI terminal interface.
 - `project`: Path to a Julia project to activate. Defaults to the current active environment.
 - `fps`: Frames per second for the TUI render loop (default: 30).
 """
-function pkgtui(; project::Union{String,Nothing} = nothing, fps::Int = 5)
+function pkgtui(; project::Union{String,Nothing} = nothing, fps::Int = 15)
     if project !== nothing
         Pkg.activate(project)
     elseif haskey(ENV, "JULIA_LOAD_PATH")

@@ -228,43 +228,6 @@ end
     @test format_time(-1.0) == "err"
 end
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Dependency tree tests
-# ──────────────────────────────────────────────────────────────────────────────
-
-@testitem "build_dependency_tree" tags = [:unit, :fast] begin
-    using UUIDs
-    using PkgTUI: PackageRow, build_dependency_tree
-
-    uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
-    uuid_b = UUID("bbbbbbbb-0000-0000-0000-000000000002")
-    uuid_c = UUID("cccccccc-0000-0000-0000-000000000003")
-
-    packages = [
-        PackageRow(
-            name = "A",
-            uuid = uuid_a,
-            version = "1.0",
-            is_direct_dep = true,
-            dependencies = [uuid_b],
-        ),
-        PackageRow(
-            name = "B",
-            uuid = uuid_b,
-            version = "2.0",
-            is_direct_dep = false,
-            dependencies = [uuid_c],
-        ),
-        PackageRow(name = "C", uuid = uuid_c, version = "3.0", is_direct_dep = false),
-    ]
-
-    root = build_dependency_tree(packages)
-    @test root.label == "Dependencies"
-    @test length(root.children) == 1  # Only A is direct
-    @test root.children[1].label == "A v1.0"
-    @test length(root.children[1].children) == 1  # B
-    @test root.children[1].children[1].label == "B v2.0"
-end
 
 # ──────────────────────────────────────────────────────────────────────────────
 # View rendering tests (TestBackend)
@@ -446,18 +409,17 @@ end
 @testitem "render dependencies tab" tags = [:view] begin
     using Tachikoma
     using UUIDs
-    using PkgTUI: PkgTUIApp, PackageRow, build_dependency_tree, render_dependencies_tab
+    using PkgTUI: PkgTUIApp, PackageRow, render_dependencies_tab
 
     m = PkgTUIApp()
     area = Rect(1, 1, 100, 30)
 
-    # Empty state
-    m.deps.loading = false
+    # Empty state (no packages)
     buf = Tachikoma.Buffer(area)
     render_dependencies_tab(m, area, buf)
     @test true
 
-    # With tree
+    # With packages (two-panel explorer)
     uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
     uuid_b = UUID("bbbbbbbb-0000-0000-0000-000000000002")
     packages = [
@@ -470,19 +432,10 @@ end
         ),
         PackageRow(name = "B", uuid = uuid_b, version = "2.0", is_direct_dep = false),
     ]
-    root = build_dependency_tree(packages)
-    m.deps.tree_root = root
-    m.deps.tree_view = TreeView(root; block = Block())
-    buf2 = Tachikoma.Buffer(area)
-    render_dependencies_tab(m, area, buf2)
-    @test true
-
-    # Graph mode (two-panel explorer)
-    m.deps.show_graph = true
     m.installed.packages = packages
     m.deps.graph_selected = 1
-    buf3 = Tachikoma.Buffer(area)
-    render_dependencies_tab(m, area, buf3)
+    buf2 = Tachikoma.Buffer(area)
+    render_dependencies_tab(m, area, buf2)
     @test true
 end
 
@@ -755,32 +708,25 @@ end
         ),
         PackageRow(name = "PkgB", uuid = uuid_b, version = "2.0", is_direct_dep = false),
     ]
-    m.deps.show_graph = true
     m.deps.graph_selected = 1
 
     render_dependencies_tab(m, area, buf)
     @test true
 end
 
-@testitem "get_selected_dep_name tree mode" tags = [:view] begin
+@testitem "get_selected_dep_name" tags = [:view] begin
     using Tachikoma
     using UUIDs
     using PkgTUI: PkgTUIApp, PackageRow, get_selected_dep_name
 
     m = PkgTUIApp()
 
-    # Tree mode with TreeView
-    root = TreeNode("Dependencies", [TreeNode("MyPkg v1.2.3"), TreeNode("Other v0.5.0")])
-    m.deps.tree_view = TreeView(root; block = Block())
-    m.deps.tree_view.selected = 2  # "MyPkg v1.2.3"
-    m.deps.show_graph = false
-
+    # No packages — returns nothing
     name = get_selected_dep_name(m.deps, m)
-    @test name == "MyPkg"
+    @test name === nothing
 
-    # Graph mode (two-panel explorer)
+    # With packages
     uuid_a = UUID("aaaaaaaa-0000-0000-0000-000000000001")
-    m.deps.show_graph = true
     m.installed.packages =
         [PackageRow(name = "GraphPkg", uuid = uuid_a, is_direct_dep = true)]
     m.deps.graph_selected = 1

@@ -704,44 +704,4 @@ function measure_disk_sizes(packages::Vector{PackageRow})::Vector{PackageMetrics
     return metrics
 end
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Dependency graph construction
-# ──────────────────────────────────────────────────────────────────────────────
 
-"""
-    build_dependency_tree(packages::Vector{PackageRow}) → TreeNode
-
-Build a TreeView-compatible tree from installed packages. Direct dependencies
-are root nodes; their transitive deps become children.
-"""
-function build_dependency_tree(packages::Vector{PackageRow})::TreeNode
-    pkg_map = Dict(p.uuid => p for p in packages)
-
-    function make_node(uuid::UUID, visited::Set{UUID})::Union{TreeNode,Nothing}
-        uuid in visited && return nothing
-        !haskey(pkg_map, uuid) && return nothing
-        push!(visited, uuid)
-        pkg = pkg_map[uuid]
-        label = pkg.version !== nothing ? "$(pkg.name) v$(pkg.version)" : pkg.name
-
-        children = TreeNode[]
-        for dep_uuid in pkg.dependencies
-            child = make_node(dep_uuid, copy(visited))
-            child !== nothing && push!(children, child)
-        end
-        sort!(children; by = n -> n.label)
-        return TreeNode(label, children)
-    end
-
-    # Root nodes are direct dependencies
-    direct = filter(p -> p.is_direct_dep, packages)
-    sort!(direct; by = p -> lowercase(p.name))
-
-    root_children = TreeNode[]
-    for pkg in direct
-        node = make_node(pkg.uuid, Set{UUID}())
-        node !== nothing && push!(root_children, node)
-    end
-
-    return TreeNode("Dependencies", root_children)
-end

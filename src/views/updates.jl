@@ -129,10 +129,10 @@ function render_updates_header(area::Rect, buf::Buffer)
     cx = area.x + 1
 
     set_string!(buf, cx, y, " ", style)
-    set_string!(buf, cx + 2, y, "Package", style)
-    set_string!(buf, cx + 25, y, "Current", style)
-    set_string!(buf, cx + 38, y, "Latest", style)
-    set_string!(buf, cx + 51, y, "Blocked By", style)
+    set_string!(buf, cx + 4, y, "Package", style)
+    set_string!(buf, cx + 27, y, "Current", style)
+    set_string!(buf, cx + 40, y, "Latest", style)
+    set_string!(buf, cx + 53, y, "Blocked By", style)
 
     for x = area.x:(area.x+area.width-1)
         set_char!(buf, x, y + 1, '─', tstyle(:border))
@@ -153,11 +153,16 @@ function render_update_row(
 )
     cx = x + 1
 
-    # Status indicator
+    # Selection indicator (▶ is 2 columns wide)
+    if selected
+        set_string!(buf, cx, y, "▶", tstyle(:accent, bold = true))
+    end
+
+    # Update status indicator
     indicator = info.can_update ? "⌃" : "⌅"
     ind_style =
         info.can_update ? tstyle(:success, bold = true) : tstyle(:warning, bold = true)
-    set_string!(buf, cx, y, indicator, selected ? tstyle(:accent, bold = true) : ind_style)
+    set_string!(buf, cx + 2, y, indicator, selected ? tstyle(:accent, bold = true) : ind_style)
 
     # Package name — green when updated
     name_style = if is_updated
@@ -167,12 +172,12 @@ function render_update_row(
     else
         tstyle(:primary)
     end
-    set_string!(buf, cx + 2, y, info.name, name_style)
+    set_string!(buf, cx + 4, y, info.name, name_style)
 
     # Current version
     set_string!(
         buf,
-        cx + 25,
+        cx + 27,
         y,
         "v" * info.current_version,
         selected ? tstyle(:accent) : tstyle(:text),
@@ -183,10 +188,10 @@ function render_update_row(
         info.latest_compatible !== nothing ? info.latest_compatible :
         info.latest_available !== nothing ? info.latest_available : "—"
     latest_str = latest == "—" ? latest : "v" * latest
-    set_string!(buf, cx + 38, y, latest_str, selected ? tstyle(:accent) : tstyle(:success))
+    set_string!(buf, cx + 40, y, latest_str, selected ? tstyle(:accent) : tstyle(:success))
 
     # Status / blocker column
-    status_x = cx + 51
+    status_x = cx + 53
     if is_updating
         spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         frame = mod(tick ÷ 4, length(spinner_chars)) + 1
@@ -209,11 +214,6 @@ function render_update_row(
         )
     elseif info.can_update
         set_string!(buf, status_x, y, "—", tstyle(:text_dim))
-    end
-
-    # Selection indicator
-    if selected
-        set_string!(buf, cx - 1, y, "▶", tstyle(:accent))
     end
 end
 
@@ -331,11 +331,12 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
             end
             st.dry_run_scroll = clamp(st.dry_run_scroll, 0, max(0, total - visible))
 
-            # Column positions
-            name_col = inner.x + 4
-            old_col = inner.x + 30
-            arrow_col = inner.x + 42
-            new_col = inner.x + 46
+            # Column positions — dynamic based on panel width
+            name_col = inner.x + 6
+            max_name = max(20, min(inner.width - 40, 40))
+            old_col = name_col + max_name + 2
+            arrow_col = old_col + 12
+            new_col = arrow_col + 4
 
             for vi = 1:visible
                 idx = vi + st.dry_run_scroll
@@ -355,28 +356,53 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
                 elseif vl.kind == :entry
                     entry = vl.entry
                     icon, _ = _section_meta(entry.kind)
-                    entry_style = tstyle(vl.style_sym)
 
-                    set_string!(buf, inner.x + 3, y, icon, entry_style)
-                    set_string!(buf, name_col, y, entry.name, entry_style)
+                    # Styles: highlight selected entry
+                    if is_sel
+                        icon_style = tstyle(:accent, bold = true)
+                        name_style = tstyle(:accent, bold = true)
+                        ver_style = tstyle(:accent)
+                        arrow_style = tstyle(:accent)
+                        # Selection marker
+                        set_string!(buf, inner.x + 2, y, "▸", tstyle(:accent, bold = true))
+                    else
+                        icon_style = tstyle(vl.style_sym)
+                        name_style = tstyle(vl.style_sym)
+                        ver_style = tstyle(:text_dim)
+                        arrow_style = tstyle(:text_dim)
+                    end
+
+                    set_string!(buf, inner.x + 4, y, icon, icon_style)
+
+                    # Truncate name if it would overflow into version column
+                    display_name = if length(entry.name) > max_name
+                        entry.name[1:max_name-1] * "…"
+                    else
+                        entry.name
+                    end
+                    set_string!(buf, name_col, y, display_name, name_style)
 
                     if entry.old_version !== nothing
-                        set_string!(buf, old_col, y, entry.old_version, tstyle(:text_dim))
+                        set_string!(buf, old_col, y, entry.old_version, ver_style)
                     elseif entry.kind == :added
-                        set_string!(buf, old_col, y, "—", tstyle(:text_dim))
+                        set_string!(buf, old_col, y, "—", ver_style)
                     end
 
                     if entry.kind in (:upgraded, :downgraded)
-                        set_string!(buf, arrow_col, y, "→", tstyle(:text_dim))
+                        set_string!(buf, arrow_col, y, "→", arrow_style)
                     end
 
                     if entry.new_version !== nothing
-                        nstyle =
-                            entry.kind == :downgraded ? tstyle(:warning, bold = true) :
+                        nstyle = if is_sel
+                            tstyle(:accent, bold = true)
+                        elseif entry.kind == :downgraded
+                            tstyle(:warning, bold = true)
+                        else
                             tstyle(:success, bold = true)
+                        end
                         set_string!(buf, new_col, y, entry.new_version, nstyle)
                     elseif entry.kind == :removed
-                        set_string!(buf, new_col, y, "—", tstyle(:text_dim))
+                        set_string!(buf, new_col, y, "—", ver_style)
                     end
                 end
                 # :blank lines are just empty — skip rendering
@@ -442,22 +468,43 @@ function handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             st.show_dry_run = false
             return true
         elseif evt.key == :up
-            st.dry_run_selected = max(1, st.dry_run_selected - 1)
+            pos = st.dry_run_selected - 1
+            while pos >= 1 && vlines[pos].kind == :blank
+                pos -= 1
+            end
+            st.dry_run_selected = max(1, pos)
             return true
         elseif evt.key == :down
-            st.dry_run_selected = min(total, st.dry_run_selected + 1)
+            pos = st.dry_run_selected + 1
+            while pos <= total && vlines[pos].kind == :blank
+                pos += 1
+            end
+            st.dry_run_selected = min(total, pos)
             return true
         elseif evt.key == :pageup
-            st.dry_run_selected = max(1, st.dry_run_selected - 10)
+            pos = max(1, st.dry_run_selected - 10)
+            while pos >= 1 && vlines[pos].kind == :blank
+                pos -= 1
+            end
+            st.dry_run_selected = max(1, pos)
             return true
         elseif evt.key == :pagedown
-            st.dry_run_selected = min(total, st.dry_run_selected + 10)
+            pos = min(total, st.dry_run_selected + 10)
+            while pos <= total && vlines[pos].kind == :blank
+                pos += 1
+            end
+            st.dry_run_selected = min(total, pos)
             return true
         elseif evt.key == :home
             st.dry_run_selected = 1
             return true
         elseif evt.key == :end_key || (evt.key == :char && evt.char == 'G')
-            st.dry_run_selected = total
+            # Find last non-blank line
+            pos = total
+            while pos >= 1 && vlines[pos].kind == :blank
+                pos -= 1
+            end
+            st.dry_run_selected = max(1, pos)
             return true
         elseif evt.key == :enter || (evt.key == :char && evt.char == ' ')
             if st.dry_run_selected >= 1 && st.dry_run_selected <= total

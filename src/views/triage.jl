@@ -1058,18 +1058,30 @@ function handle_triage_keys!(m::PkgTUIApp, evt::KeyEvent)
     end
 
     if evt.key == :char && evt.char == 'r'
-        # Retry installing the package
+        # Retry installing the package (with the same version if one was selected)
         pkg_name = tr.package_name
+        pkg_version = tr.version
         tr.show = false
         # Clear failed state and retry
         delete!(m.registry.failed_names, pkg_name)
         m.registry.installing_name = pkg_name
-        push_log!(m, "Retrying install of $(pkg_name)...")
-        set_status!(m, "Retrying $(pkg_name)...", :warning)
+        ver_label = isempty(pkg_version) ? "" : "@$(pkg_version)"
+        push_log!(m, "Retrying install of $(pkg_name)$(ver_label)...")
+        set_status!(m, "Retrying $(pkg_name)$(ver_label)...", :warning)
         spawn_task!(m.tq, :add) do
             io = IOBuffer()
-            result = add_package(pkg_name, io)
-            (result = result, log = String(take!(io)), name = pkg_name)
+            if isempty(pkg_version)
+                result = add_package(pkg_name, io)
+            else
+                result = add_package(pkg_name, io; version = pkg_version)
+                if !startswith(result, "Error")
+                    try
+                        pin_package(pkg_name, io; version = VersionNumber(pkg_version))
+                    catch
+                    end
+                end
+            end
+            (result = result, log = String(take!(io)), name = pkg_name, version = pkg_version)
         end
         return
     end

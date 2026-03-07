@@ -158,13 +158,9 @@ end
 
 """State for the Dependencies tab."""
 @kwdef mutable struct DependenciesState
-    tree_root::Union{TreeNode,Nothing} = nothing
-    tree_view::Union{TreeView,Nothing} = nothing
-    show_graph::Bool = false
     graph_selected::Int = 1
     graph_scroll::Int = 0
     why_output::Union{String,Nothing} = nothing
-    loading::Bool = false
 end
 
 """State for the Conflicts sub-view."""
@@ -191,6 +187,7 @@ end
 @kwdef mutable struct TriageState
     show::Bool = false
     package_name::String = ""
+    version::String = ""                # version that was attempted (empty = latest)
     error_message::String = ""          # full verbose Pkg error
     pkg_log::String = ""                # Pkg IO output during install
     scroll_pane::ScrollPane = ScrollPane(String[]; following = false)
