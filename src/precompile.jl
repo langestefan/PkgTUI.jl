@@ -201,11 +201,12 @@ using PrecompileTools
     _m2.installed.loading = false
     _m2.project_info = ProjectInfo(name = "PrecompileEnv", dep_count = 2, is_package = true)
     # Suppress "stty: Inappropriate ioctl" warnings: Tachikoma's with_terminal
-    # eagerly evaluates _tty_size("/dev/null") which shells out to `stty size`.
+    # eagerly evaluates _tty_size which shells out to `stty size`.
     _prev_stderr = stderr
     redirect_stderr(devnull)
+    _null_dev = Sys.iswindows() ? "NUL" : "/dev/null"
     Tachikoma.with_terminal(;
-        tty_out = "/dev/null",
+        tty_out = _null_dev,
         tty_size = (rows = 40, cols = 120),
     ) do _t
         _overlay = Tachikoma.AppOverlay()
