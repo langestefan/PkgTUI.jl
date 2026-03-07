@@ -40,9 +40,9 @@ pkgtui()
 pkgtui(; project="/path/to/MyProject")
 ```
 
-> [!NOTE]
+> [!IMPORTANT]
 > You need to manually make ~/.julia/bin available on the PATH environment.
-> The path to the julia executable used is the same as the one used to install the app. 
+> The path to the julia executable used is the same as the one used to install the app.
 > If this julia installation gets removed, you might need to reinstall the app. See the
 > [Pkg App documentation](https://pkgdocs.julialang.org/dev/apps/) for more details.
 
@@ -54,10 +54,14 @@ Browse all packages in your environment with full CRUD operations. Filter by nam
 
 | Key | Action |
 |-----|--------|
-| `a` | Add package | `r` / `Del` | Remove |
-| `u` | Update selected | `U` | Update all |
-| `p` | Pin | `f` | Free |
-| `/` | Filter | `t` | Toggle indirect deps |
+| `a` | Add package |
+| `r` / `Del` | Remove |
+| `u` | Update selected |
+| `U` | Update all |
+| `p` | Pin |
+| `f` | Free |
+| `/` | Filter |
+| `t` | Toggle indirect deps |
 
 ### Update Notifications
 
@@ -65,8 +69,10 @@ See available updates with **⌃** (compatible) and **⌅** (breaking) markers. 
 
 | Key | Action |
 |-----|--------|
-| `u` | Update selected | `U` | Update all |
-| `d` | Dry-run preview | `R` | Refresh |
+| `u` | Update selected |
+| `U` | Update all |
+| `d` | Dry-run preview |
+| `R` | Refresh |
 | `c` | Toggle conflicts panel |
 
 ### Registry Explorer
@@ -75,7 +81,8 @@ Search 13,000+ registered packages with fuzzy matching. View descriptions, repo 
 
 | Key | Action |
 |-----|--------|
-| `/` | Search | `Enter` | Install |
+| `/` | Search |
+| `Enter` | Install |
 
 ### Dependency Visualizer
 
@@ -93,7 +100,8 @@ Bar charts of disk usage per package and compile-time profiling via `Pkg.precomp
 
 | Key | Action |
 |-----|--------|
-| `s` | Switch size/compile view | `r` | Run profiling |
+| `s` | Switch size/compile view |
+| `r` | Run profiling |
 
 ### More
 
