@@ -316,7 +316,15 @@ end
 
 @testitem "render updates tab" tags = [:view] begin
     using Tachikoma
-    using PkgTUI: PkgTUIApp, UpdateInfo, ConflictInfo, DryRunDiff, DryRunEntry, extract_conflicts, render_updates_tab, handle_updates_keys!
+    using PkgTUI:
+        PkgTUIApp,
+        UpdateInfo,
+        ConflictInfo,
+        DryRunDiff,
+        DryRunEntry,
+        extract_conflicts,
+        render_updates_tab,
+        handle_updates_keys!
 
     m = PkgTUIApp()
     area = Rect(1, 1, 100, 30)
@@ -349,10 +357,17 @@ end
 
     # Dry-run view
     m.updates_state.show_dry_run = true
-    m.updates_state.dry_run_output = DryRunDiff(entries = [
-        DryRunEntry(name = "Foo", kind = :upgraded, old_version = "1.0.0", new_version = "2.0.0"),
-        DryRunEntry(name = "NewPkg", kind = :added, new_version = "0.1.0"),
-    ])
+    m.updates_state.dry_run_output = DryRunDiff(
+        entries = [
+            DryRunEntry(
+                name = "Foo",
+                kind = :upgraded,
+                old_version = "1.0.0",
+                new_version = "2.0.0",
+            ),
+            DryRunEntry(name = "NewPkg", kind = :added, new_version = "0.1.0"),
+        ],
+    )
     buf3 = Tachikoma.Buffer(area)
     render_updates_tab(m, area, buf3)
     @test true
@@ -370,12 +385,24 @@ end
     @test true
 
     # Dry-run section toggling
-    m.updates_state.dry_run_output = DryRunDiff(entries = [
-        DryRunEntry(name = "Foo", kind = :upgraded, old_version = "1.0.0", new_version = "2.0.0"),
-        DryRunEntry(name = "Bar", kind = :upgraded, old_version = "0.5.0", new_version = "1.0.0"),
-        DryRunEntry(name = "OldPkg", kind = :removed, old_version = "3.0.0"),
-        DryRunEntry(name = "NewPkg", kind = :added, new_version = "0.1.0"),
-    ])
+    m.updates_state.dry_run_output = DryRunDiff(
+        entries = [
+            DryRunEntry(
+                name = "Foo",
+                kind = :upgraded,
+                old_version = "1.0.0",
+                new_version = "2.0.0",
+            ),
+            DryRunEntry(
+                name = "Bar",
+                kind = :upgraded,
+                old_version = "0.5.0",
+                new_version = "1.0.0",
+            ),
+            DryRunEntry(name = "OldPkg", kind = :removed, old_version = "3.0.0"),
+            DryRunEntry(name = "NewPkg", kind = :added, new_version = "0.1.0"),
+        ],
+    )
     m.updates_state.dry_run_sections = Dict{Symbol,Bool}()
     m.updates_state.dry_run_selected = 1
     m.updates_state.dry_run_scroll = 0

@@ -357,13 +357,37 @@ function dry_run_update(io::IOBuffer)::DryRunDiff
                         ov = old_versions[name]
                         nv = new_versions[name]
                         if ov != nv
-                            kind = VersionNumber(nv) > VersionNumber(ov) ? :upgraded : :downgraded
-                            push!(entries, DryRunEntry(name = name, kind = kind, old_version = ov, new_version = nv))
+                            kind =
+                                VersionNumber(nv) > VersionNumber(ov) ? :upgraded :
+                                :downgraded
+                            push!(
+                                entries,
+                                DryRunEntry(
+                                    name = name,
+                                    kind = kind,
+                                    old_version = ov,
+                                    new_version = nv,
+                                ),
+                            )
                         end
                     elseif has_new && !has_old
-                        push!(entries, DryRunEntry(name = name, kind = :added, new_version = new_versions[name]))
+                        push!(
+                            entries,
+                            DryRunEntry(
+                                name = name,
+                                kind = :added,
+                                new_version = new_versions[name],
+                            ),
+                        )
                     elseif has_old && !has_new
-                        push!(entries, DryRunEntry(name = name, kind = :removed, old_version = old_versions[name]))
+                        push!(
+                            entries,
+                            DryRunEntry(
+                                name = name,
+                                kind = :removed,
+                                old_version = old_versions[name],
+                            ),
+                        )
                     end
                 end
             finally

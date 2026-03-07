@@ -268,9 +268,16 @@ function _build_dry_run_lines(st::UpdatesState)
         icon, label, style_sym = _section_meta(kind)
         push!(
             lines,
-            (kind = :header, section = kind, section_idx = si,
-             icon = icon, label = label, count = length(entries),
-             expanded = expanded, style_sym = style_sym),
+            (
+                kind = :header,
+                section = kind,
+                section_idx = si,
+                icon = icon,
+                label = label,
+                count = length(entries),
+                expanded = expanded,
+                style_sym = style_sym,
+            ),
         )
         if expanded
             for entry in entries
@@ -303,7 +310,13 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
         if diff.error !== nothing
             set_string!(buf, inner.x + 1, inner.y, "Error: $(diff.error)", tstyle(:error))
         elseif isempty(diff.entries)
-            set_string!(buf, inner.x + 1, inner.y, "No changes — environment is up to date.", tstyle(:success))
+            set_string!(
+                buf,
+                inner.x + 1,
+                inner.y,
+                "No changes — environment is up to date.",
+                tstyle(:success),
+            )
         else
             vlines = _build_dry_run_lines(st)
             visible = inner.height
@@ -324,7 +337,7 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
             arrow_col = inner.x + 42
             new_col = inner.x + 46
 
-            for vi in 1:visible
+            for vi = 1:visible
                 idx = vi + st.dry_run_scroll
                 idx > total && break
                 y = inner.y + vi - 1
@@ -335,7 +348,8 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
                     chevron = vl.expanded ? "▼" : "▶"
                     sel_marker = is_sel ? "▸ " : "  "
                     header_text = "$(sel_marker)$(chevron) $(vl.icon) $(vl.count) package$(vl.count == 1 ? "" : "s") $(vl.label)"
-                    style = is_sel ? tstyle(vl.style_sym, bold = true) : tstyle(vl.style_sym)
+                    style =
+                        is_sel ? tstyle(vl.style_sym, bold = true) : tstyle(vl.style_sym)
                     set_string!(buf, inner.x + 1, y, header_text, style)
 
                 elseif vl.kind == :entry
@@ -357,7 +371,9 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
                     end
 
                     if entry.new_version !== nothing
-                        nstyle = entry.kind == :downgraded ? tstyle(:warning, bold = true) : tstyle(:success, bold = true)
+                        nstyle =
+                            entry.kind == :downgraded ? tstyle(:warning, bold = true) :
+                            tstyle(:success, bold = true)
                         set_string!(buf, new_col, y, entry.new_version, nstyle)
                     elseif entry.kind == :removed
                         set_string!(buf, new_col, y, "—", tstyle(:text_dim))
@@ -370,7 +386,13 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
             if total > visible
                 pct = round(Int, (st.dry_run_scroll + visible) / total * 100)
                 scroll_text = "↑↓ $(min(pct, 100))%"
-                set_string!(buf, inner.x + inner.width - length(scroll_text) - 1, inner.y + inner.height - 1, scroll_text, tstyle(:text_dim))
+                set_string!(
+                    buf,
+                    inner.x + inner.width - length(scroll_text) - 1,
+                    inner.y + inner.height - 1,
+                    scroll_text,
+                    tstyle(:text_dim),
+                )
             end
         end
     end
@@ -441,7 +463,8 @@ function handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
             if st.dry_run_selected >= 1 && st.dry_run_selected <= total
                 vl = vlines[st.dry_run_selected]
                 if vl.kind == :header
-                    st.dry_run_sections[vl.section] = !get(st.dry_run_sections, vl.section, true)
+                    st.dry_run_sections[vl.section] =
+                        !get(st.dry_run_sections, vl.section, true)
                 end
             end
             return true
