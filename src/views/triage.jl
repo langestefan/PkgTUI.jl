@@ -11,8 +11,8 @@ for a failed package install.
 function render_triage_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     tr = m.triage
 
-    # Size: nearly full-screen
-    w = min(area.width - 4, 90)
+    # Size: nearly full-screen (no hard width cap — h-scroll handles overflow)
+    w = max(area.width - 4, 40)
     h = min(area.height - 2, 40)
     overlay_rect = center(area, w, h)
 
@@ -92,10 +92,14 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
         # ── Compat range lines (visual summary) ──
         pkgs = _parse_resolver_log(combined)
         if !isempty(pkgs)
+            # Use a generous bar width so even closely-spaced version ranges
+            # are visually distinguishable.  Horizontal scrolling handles overflow.
+            bar_w = 60
+
             push!(lines, [Span("  Compat Ranges", tstyle(:accent, bold = true))])
-            push!(lines, [Span("  " * "─"^40, tstyle(:text_dim))])
+            push!(lines, [Span("  " * "─"^bar_w, tstyle(:text_dim))])
             push!(lines, [Span("")])
-            append!(lines, _build_ver_bars(pkgs, 40))
+            append!(lines, _build_ver_bars(pkgs, bar_w))
         end
     end
 
@@ -201,20 +205,42 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
 
     # Store lines and build scroll pane with render callback for horizontal scroll
     tr._lines = lines
-    render_fn = (buf, area, v_offset) -> begin
-        h = tr.h_offset
-        for i in 1:area.height
-            idx = v_offset + i
-            (idx < 1 || idx > length(tr._lines)) && continue
-            y = area.y + i - 1
-            col = area.x - h
-            for span in tr._lines[idx]
-                col > right(area) && break
-                col = set_string!(buf, col, y, span.content, span.style;
-                                  max_x = right(area))
+    render_fn =
+        (buf, area, v_offset) -> begin
+            h = tr.h_offset
+            left = area.x
+            for i = 1:area.height
+                idx = v_offset + i
+                (idx < 1 || idx > length(tr._lines)) && continue
+                y = area.y + i - 1
+                col = left - h
+                for span in tr._lines[idx]
+                    col > right(area) && break
+                    text = span.content
+                    n = length(text)
+                    # Entire span is before the left edge — skip it
+                    if col + n <= left
+                        col += n
+                        continue
+                    end
+                    # Span partially before the left edge — trim leading chars
+                    if col < left
+                        skip = left - col
+                        start_idx = nextind(text, 0, skip + 1)
+                        col = set_string!(
+                            buf,
+                            left,
+                            y,
+                            text[start_idx:end],
+                            span.style;
+                            max_x = right(area),
+                        )
+                    else
+                        col = set_string!(buf, col, y, text, span.style; max_x = right(area))
+                    end
+                end
             end
         end
-    end
     tr.scroll_pane = ScrollPane(render_fn, length(lines); following = false)
 end
 
@@ -237,10 +263,12 @@ function _ver_to_num(s::AbstractString)::Float64
     return val
 end
 
-"""Parse a version range string `"X.Y.Z - A.B.C"` or `"X.Y.Z"` into `(min, max)` strings."""
+"""Parse a version range string `"X.Y.Z - A.B.C"` or `"X.Y.Z"` into `(min, max)` strings.
+Handles en-dash `–`, em-dash `—`, and plain hyphen `-` with or without spaces."""
 function _parse_ver_range(s::AbstractString)::Tuple{String,String}
     s = strip(String(s))
-    m = match(r"^(.+?)\s+-\s+(.+)$", s)
+    # Match version-like numbers separated by any dash type (-, –, —), spaces optional
+    m = match(r"^(\d+\.\d+(?:\.\d+)?)\s*[-–—]+\s*(\d+\.\d+(?:\.\d+)?)$", s)
     m !== nothing && return (strip(String(m.captures[1])), strip(String(m.captures[2])))
     return (s, s)
 end
@@ -256,12 +284,15 @@ function _parse_ver_ranges(s::AbstractString)::Vector{Tuple{String,String}}
     s = strip(String(s))
     # Strip trailing "or uninstalled"
     s = replace(s, r"\s+or\s+uninstalled\s*$"i => "")
+    # Strip surrounding brackets: [0.0.1 - 3.1.1, 9.33.0 - 10.32.1] → 0.0.1 - 3.1.1, 9.33.0 - 10.32.1
+    s = strip(s, ['[', ']'])
     isempty(s) && return Tuple{String,String}[]
     ranges = Tuple{String,String}[]
     for part in split(s, ',')
         part = strip(String(part))
         isempty(part) && continue
-        m = match(r"^(.+?)\s+-\s+(.+)$", part)
+        # Match version-like numbers separated by any dash type (-, –, —), spaces optional
+        m = match(r"^(\d+\.\d+(?:\.\d+)?)\s*[-–—]+\s*(\d+\.\d+(?:\.\d+)?)$", part)
         if m !== nothing
             push!(ranges, (strip(String(m.captures[1])), strip(String(m.captures[2]))))
         else
@@ -442,6 +473,17 @@ function _parse_resolver_log(text::String)::Vector{_PkgVerInfo}
             push!(pkg_constraints[active], _VerConstraint("explicit", ranges, false))
             continue
         end
+
+        # ── General: "restricted to versions X by SOURCE [uuid]..." (catch-all) ──
+        # Catches lines with "conflict was triggered!", "leaving unresolved", etc.
+        m = match(r"restricted to versions\s+(.+?)\s+by\s+(\w[\w.]*)\s+\[[^\]]+\]", line)
+        if m !== nothing
+            ranges = _parse_ver_ranges(String(m.captures[1]))
+            source = String(m.captures[2])
+            is_conf = occursin("conflict was triggered", line)
+            push!(pkg_constraints[active], _VerConstraint(source, ranges, is_conf))
+            continue
+        end
     end
 
     # ── Build result vector in insertion order ──
@@ -488,57 +530,64 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
     label_w = maximum(length, all_labels; init = 13) + 1
 
     # ── 1. Cross-reference: find conflict targets ──
-    # A package that has any is_conflict constraint is a "conflict target" —
-    # its version range can't be satisfied.  We show ONLY bars for that
-    # package's constraints (Available + each constraint source).
     pkg_by_name = Dict(p.name => p for p in pkgs)
-    conflict_targets = String[]  # names of packages whose deps can't be satisfied
+    conflict_targets = String[]
     for pkg in pkgs
         if any(c -> c.is_conflict, pkg.constraints)
             push!(conflict_targets, pkg.name)
         end
     end
 
-    # ── 2. Compute a single global axis across ALL packages & constraints ──
-    global_min = Inf
-    global_max = -Inf
-    for pkg in pkgs
-        pmin = _ver_to_num(pkg.possible_min)
-        pmax = _ver_to_num(pkg.possible_max)
-        global_min = min(global_min, pmin)
-        global_max = max(global_max, pmax)
-        for c in pkg.constraints
+    # ── Inner helper: compute per-section axis and build range_spans ──
+    # Each section gets its own axis so bars are maximally spread out.
+
+    function _is_ver(s::String)
+        tryparse(Float64, String(first(split(s, '.')))) !== nothing
+    end
+
+    function _section_axis(avail_min::String, avail_max::String, constraints::Vector)
+        # Gather all version endpoints for this section
+        lo = _ver_to_num(avail_min)
+        hi = _ver_to_num(avail_max)
+        for c in constraints
             for (rmin, rmax) in c.ranges
-                isempty(rmin) && continue
-                global_min = min(global_min, _ver_to_num(rmin))
-                global_max = max(global_max, _ver_to_num(rmax))
+                # Skip non-version ranges (empty, wildcard "*", etc.)
+                (isempty(rmin) || !_is_ver(rmin)) && continue
+                lo = min(lo, _ver_to_num(rmin))
+                (isempty(rmax) || !_is_ver(rmax)) && continue
+                hi = max(hi, _ver_to_num(rmax))
             end
         end
+        arange = hi - lo
+        arange = arange > 0 ? arange : 1.0
+        return (lo, hi, arange)
     end
-    axis_range = global_max - global_min
-    axis_range = axis_range > 0 ? axis_range : 1.0
 
-    # Helper: version number → column position (0-based, in [0, line_w-1])
-    to_col(v::Float64) =
-        clamp(round(Int, (v - global_min) / axis_range * (line_w - 1)), 0, line_w - 1)
+    function _to_col(v::Float64, axis_min::Float64, axis_range::Float64)
+        clamp(round(Int, (v - axis_min) / axis_range * (line_w - 1)), 0, line_w - 1)
+    end
 
-    # ── Inner helper: build spans for a (possibly multi-range) line ──
-    # `vranges` is a Vector of (min_str, max_str) pairs, e.g.
-    #   [("0.0.1","3.1.1"), ("9.33.0","9.7.0")]
     function range_spans(
         label::String,
         vranges::Vector{Tuple{String,String}},
         style::Symbol,
+        axis_min::Float64,
+        axis_range::Float64,
     )
         lbl = rpad(label, label_w)
 
         # Compute column segments for each range
         segments = Tuple{Int,Int}[]
         for (vmin_str, vmax_str) in vranges
-            cmin = to_col(_ver_to_num(vmin_str))
-            cmax = to_col(_ver_to_num(vmax_str))
-            cmax = max(cmax, cmin)
-            push!(segments, (cmin, cmax))
+            if !_is_ver(vmin_str) || !_is_ver(vmax_str)
+                # Wildcard "*" or non-version → full-width bar
+                push!(segments, (0, line_w - 1))
+            else
+                cmin = _to_col(_ver_to_num(vmin_str), axis_min, axis_range)
+                cmax = _to_col(_ver_to_num(vmax_str), axis_min, axis_range)
+                cmax = max(cmax, cmin)
+                push!(segments, (cmin, cmax))
+            end
         end
 
         # Build text label (all ranges joined by ", ")
@@ -591,14 +640,17 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
         return spans
     end
 
-    # Convenience overload for a single (min, max) pair (e.g., Available range)
-    range_spans(label::String, vmin::String, vmax::String, style::Symbol) =
-        range_spans(label, [(vmin, vmax)], style)
+    # Convenience overload for a single (min, max) pair
+    range_spans(
+        label::String,
+        vmin::String,
+        vmax::String,
+        style::Symbol,
+        axis_min::Float64,
+        axis_range::Float64,
+    ) = range_spans(label, [(vmin, vmax)], style, axis_min, axis_range)
 
-    # ── 3. Conflict sections — bars only for the conflict target ──
-    # Show ONLY the conflict target's bars: Available range + each constraint
-    # that restricts it (both non-conflict and conflict constraints).
-    # Do NOT show separate sections for other packages involved.
+    # ── 2. Conflict sections — per-section axis ──
     shown_in_conflict = Set{String}()
 
     for target_name in conflict_targets
@@ -615,10 +667,21 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
         # Header
         push!(lines, [Span("    ✗ Conflict: $(target_name)", tstyle(:error, bold = true))])
 
+        # Compute per-section axis from this target's ranges only
+        sec_min, sec_max, sec_range =
+            _section_axis(target.possible_min, target.possible_max, target.constraints)
+
         # Bar chart: Available range of the conflict target
         push!(
             lines,
-            range_spans("Available", target.possible_min, target.possible_max, :success),
+            range_spans(
+                "Available",
+                target.possible_min,
+                target.possible_max,
+                :success,
+                sec_min,
+                sec_range,
+            ),
         )
 
         # One bar per constraint on this target, sorted by first range min ascending
@@ -632,7 +695,10 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
             if c.is_conflict
                 if !isempty(c.ranges)
                     # Conflict constraint with known range(s)
-                    push!(lines, range_spans(c.source, c.ranges, :error))
+                    push!(
+                        lines,
+                        range_spans(c.source, c.ranges, :error, sec_min, sec_range),
+                    )
                 else
                     # Conflict constraint without range (e.g., "to versions: uninstalled")
                     lbl = rpad(c.source, label_w)
@@ -645,27 +711,44 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
                     )
                 end
             else
-                push!(lines, range_spans(c.source, c.ranges, :warning))
+                push!(lines, range_spans(c.source, c.ranges, :warning, sec_min, sec_range))
             end
         end
 
         push!(
             lines,
-            [Span("    $(rpad("Intersection", label_w))", tstyle(:text_dim)), Span("✗ none", tstyle(:error))],
+            [
+                Span("    $(rpad("Intersection", label_w))", tstyle(:text_dim)),
+                Span("✗ none", tstyle(:error)),
+            ],
         )
         push!(lines, [Span("")])
     end
 
-    # ── 4. Non-conflict package sections (only those not involved in a conflict) ──
+    # ── 3. Non-conflict package sections (only those not involved in a conflict) ──
     for pkg in pkgs
         pkg.name in shown_in_conflict && continue
 
         non_conflict_cs = filter(c -> !c.is_conflict, pkg.constraints)
 
+        # Compute per-section axis from this package's ranges only
+        sec_min, sec_max, sec_range =
+            _section_axis(pkg.possible_min, pkg.possible_max, non_conflict_cs)
+
         push!(lines, [Span("    $(pkg.name)", tstyle(:accent, bold = true))])
-        push!(lines, range_spans("Available", pkg.possible_min, pkg.possible_max, :success))
+        push!(
+            lines,
+            range_spans(
+                "Available",
+                pkg.possible_min,
+                pkg.possible_max,
+                :success,
+                sec_min,
+                sec_range,
+            ),
+        )
         for c in non_conflict_cs
-            push!(lines, range_spans(c.source, c.ranges, :warning))
+            push!(lines, range_spans(c.source, c.ranges, :warning, sec_min, sec_range))
         end
         push!(lines, [Span("")])
     end
