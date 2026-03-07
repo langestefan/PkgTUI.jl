@@ -302,7 +302,8 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             # Prepare triage data so [t] works immediately
             pkg_log = result isa NamedTuple && hasproperty(result, :log) ? result.log : ""
             m.triage.package_name = pkg_name
-            m.triage.version = result isa NamedTuple && hasproperty(result, :version) ? result.version : ""
+            m.triage.version =
+                result isa NamedTuple && hasproperty(result, :version) ? result.version : ""
             m.triage.error_message = msg
             m.triage.pkg_log = pkg_log
             # Non-blocking toast instead of modal

@@ -546,7 +546,12 @@ function handle_version_picker_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                     catch
                     end
                 end
-                (result = result, log = String(take!(io)), name = pkg_name, version = version)
+                (
+                    result = result,
+                    log = String(take!(io)),
+                    name = pkg_name,
+                    version = version,
+                )
             end
             vp.show = false
         end

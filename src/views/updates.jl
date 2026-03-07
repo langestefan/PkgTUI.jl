@@ -162,7 +162,13 @@ function render_update_row(
     indicator = info.can_update ? "⌃" : "⌅"
     ind_style =
         info.can_update ? tstyle(:success, bold = true) : tstyle(:warning, bold = true)
-    set_string!(buf, cx + 2, y, indicator, selected ? tstyle(:accent, bold = true) : ind_style)
+    set_string!(
+        buf,
+        cx + 2,
+        y,
+        indicator,
+        selected ? tstyle(:accent, bold = true) : ind_style,
+    )
 
     # Package name — green when updated
     name_style = if is_updated

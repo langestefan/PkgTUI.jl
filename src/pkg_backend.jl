@@ -40,7 +40,8 @@ function fetch_project_info()::ProjectInfo
         if ws_root !== nothing && ws_toml !== nothing
             info.is_workspace = true
             info.workspace_root = ws_root
-            info.workspace_projects = _resolve_workspace_projects(ws_root, ws_toml, proj.path)
+            info.workspace_projects =
+                _resolve_workspace_projects(ws_root, ws_toml, proj.path)
         end
     end
 

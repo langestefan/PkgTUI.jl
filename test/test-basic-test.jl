@@ -1174,6 +1174,81 @@ end
     @test occursin("explicit", combined)
 end
 
+@testitem "triage leaving-only-versions parsing" tags = [:unit, :fast] begin
+    using Tachikoma
+    using PkgTUI: _parse_resolver_log, _build_ver_bars, _parse_ver_ranges
+
+    # Simulate JuMP-like resolver output where Pkg emits:
+    #   "to versions: X or uninstalled, leaving only versions: uninstalled"
+    # These lines should be detected as CONFLICTS (no remaining versions).
+    resolver_log = """
+    Unsatisfiable requirements detected for package OrdinaryDiffEqDifferentiation [4302a76b]:
+    OrdinaryDiffEqDifferentiation [4302a76b] log:
+    ├─possible versions are: 1.0.0 - 2.2.1 or uninstalled
+    ├─restricted by compatibility requirements with SciMLOperators [c0aeaf25] to versions: 1.2.0 - 2.2.1 or uninstalled
+    ├─restricted by compatibility requirements with DifferentiationInterface [a0c0ee7d] to versions: 1.0.0 - 1.4.0 or uninstalled, leaving only versions: 1.0.0 - 1.4.0 or uninstalled
+    ├─restricted by compatibility requirements with SparseMatrixColorings [0a514795] to versions: 1.0.0 - 1.4.0 or uninstalled, leaving only versions: uninstalled
+    └─restricted by compatibility requirements with SparseDiffTools [47a9eef4] to versions: 1.6.0 - 2.2.1 or uninstalled, leaving only versions: 1.10.0 - 2.2.1
+    Reexport [189a3867] log:
+    ├─possible versions are: 0.2.0 - 1.2.2 or uninstalled
+    └─restricted by compatibility requirements with SolarPosition [5b9d1343] to versions: 1.0.0 - 1.2.2 or uninstalled
+    """
+
+    pkgs = _parse_resolver_log(resolver_log)
+    @test length(pkgs) == 2
+
+    # OrdinaryDiffEqDifferentiation is the conflict target
+    odiff = pkgs[findfirst(p -> p.name == "OrdinaryDiffEqDifferentiation", pkgs)]
+    @test odiff.possible_min == "1.0.0"
+    @test odiff.possible_max == "2.2.1"
+
+    # SciMLOperators: non-conflict, clean range without "leaving"
+    sci_c = findfirst(c -> c.source == "SciMLOperators", odiff.constraints)
+    @test sci_c !== nothing
+    @test odiff.constraints[sci_c].is_conflict == false
+    @test odiff.constraints[sci_c].ranges == [("1.2.0", "2.2.1")]
+
+    # DifferentiationInterface: non-conflict, "leaving only versions: 1.0.0 - 1.4.0"
+    di_c = findfirst(c -> c.source == "DifferentiationInterface", odiff.constraints)
+    @test di_c !== nothing
+    @test odiff.constraints[di_c].is_conflict == false
+    @test odiff.constraints[di_c].ranges == [("1.0.0", "1.4.0")]
+
+    # SparseMatrixColorings: CONFLICT — "leaving only versions: uninstalled"
+    smc_c = findfirst(c -> c.source == "SparseMatrixColorings", odiff.constraints)
+    @test smc_c !== nothing
+    @test odiff.constraints[smc_c].is_conflict == true
+    @test odiff.constraints[smc_c].ranges == [("1.0.0", "1.4.0")]
+
+    # SparseDiffTools: non-conflict, "leaving only versions: 1.10.0 - 2.2.1"
+    sdt_c = findfirst(c -> c.source == "SparseDiffTools", odiff.constraints)
+    @test sdt_c !== nothing
+    @test odiff.constraints[sdt_c].is_conflict == false
+    @test odiff.constraints[sdt_c].ranges == [("1.6.0", "2.2.1")]
+
+    # Reexport: non-conflict, simple constraint
+    reexport = pkgs[findfirst(p -> p.name == "Reexport", pkgs)]
+    @test !any(c -> c.is_conflict, reexport.constraints)
+
+    # Build bars — OrdinaryDiffEqDifferentiation should have a conflict section
+    lines = _build_ver_bars(pkgs, 50)
+    combined = join([join(s.content for s in line) for line in lines], "\n")
+    @test occursin("Conflict: OrdinaryDiffEqDifferentiation", combined)
+    @test occursin("SparseMatrixColorings", combined)
+    @test occursin("DifferentiationInterface", combined)
+    @test occursin("SciMLOperators", combined)
+    @test occursin("Intersection", combined)
+    # Range labels should be clean version numbers — no "leaving" text
+    @test !occursin("leaving", combined)
+
+    # _parse_ver_ranges safety net: handles "leaving only versions" even if
+    # passed directly (e.g., from a future unmatched regex pattern)
+    r = _parse_ver_ranges("1.0.0 - 1.4.0 or uninstalled, leaving only versions: uninstalled")
+    @test r == [("1.0.0", "1.4.0")]
+    r2 = _parse_ver_ranges("1.6.0 - 2.2.1 or uninstalled, leaving only versions: 1.10.0 - 2.2.1")
+    @test r2 == [("1.6.0", "2.2.1")]
+end
+
 @testitem "triage key handling" tags = [:event] begin
     using Tachikoma
     using PkgTUI:

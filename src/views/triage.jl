@@ -300,6 +300,9 @@ Also strips trailing `"or uninstalled"` from the input.
 """
 function _parse_ver_ranges(s::AbstractString)::Vector{Tuple{String,String}}
     s = strip(String(s))
+    # Strip "leaving only versions: ..." suffix (safety net — callers should
+    # ideally strip this before passing, but Pkg output varies in format).
+    s = replace(s, r",?\s*leaving only versions:.*$"i => "")
     # Strip trailing "or uninstalled"
     s = replace(s, r"\s+or\s+uninstalled\s*$"i => "")
     # Strip surrounding brackets: [0.0.1 - 3.1.1, 9.33.0 - 10.32.1] → 0.0.1 - 3.1.1, 9.33.0 - 10.32.1
@@ -308,6 +311,10 @@ function _parse_ver_ranges(s::AbstractString)::Vector{Tuple{String,String}}
     ranges = Tuple{String,String}[]
     for part in split(s, ',')
         part = strip(String(part))
+        isempty(part) && continue
+        # Strip "or uninstalled" from individual comma-separated parts too
+        part = replace(part, r"\s+or\s+uninstalled\s*$"i => "")
+        part = strip(part)
         isempty(part) && continue
         # Match version-like numbers separated by any dash type (-, –, —), spaces optional
         m = match(r"^(\d+\.\d+(?:\.\d+)?)\s*[-–—]+\s*(\d+\.\d+(?:\.\d+)?)$", part)
@@ -443,6 +450,40 @@ function _parse_resolver_log(text::String)::Vector{_PkgVerInfo}
             push!(
                 pkg_constraints[active],
                 _VerConstraint(String(m.captures[1]), Tuple{String,String}[], true),
+            )
+            continue
+        end
+
+        # ── Compat constraint + "leaving only versions: uninstalled" → conflict ──
+        # The Pkg resolver often emits lines like:
+        #   "restricted by compatibility requirements with X [uuid] to versions:
+        #    1.0.0 - 1.4.0 or uninstalled, leaving only versions: uninstalled"
+        # When the remaining versions are "uninstalled", no valid version exists → conflict.
+        m = match(
+            r"restricted by compatibility requirements with\s+(\w[\w.]*)\s+\[[^\]]+\]\s+to versions:\s*(.+?),\s*leaving only versions:\s*uninstalled",
+            line,
+        )
+        if m !== nothing
+            ranges = _parse_ver_ranges(String(m.captures[2]))
+            push!(
+                pkg_constraints[active],
+                _VerConstraint(String(m.captures[1]), ranges, true),
+            )
+            continue
+        end
+
+        # ── Compat constraint + "leaving only versions: X" (versions remain) ──
+        # When versions remain after the restriction, this is not a conflict.
+        # We record the constraint range (capture 2), not the remainder.
+        m = match(
+            r"restricted by compatibility requirements with\s+(\w[\w.]*)\s+\[[^\]]+\]\s+to versions:\s*(.+?),\s*leaving only versions:\s*(.+)",
+            line,
+        )
+        if m !== nothing
+            ranges = _parse_ver_ranges(String(m.captures[2]))
+            push!(
+                pkg_constraints[active],
+                _VerConstraint(String(m.captures[1]), ranges, false),
             )
             continue
         end
@@ -1081,7 +1122,12 @@ function handle_triage_keys!(m::PkgTUIApp, evt::KeyEvent)
                     end
                 end
             end
-            (result = result, log = String(take!(io)), name = pkg_name, version = pkg_version)
+            (
+                result = result,
+                log = String(take!(io)),
+                name = pkg_name,
+                version = pkg_version,
+            )
         end
         return
     end
