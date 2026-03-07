@@ -14,6 +14,13 @@ function render_triage_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     # Size: nearly full-screen (no hard width cap — h-scroll handles overflow)
     w = max(area.width - 4, 40)
     h = min(area.height - 2, 40)
+
+    # Rebuild content when the overlay width changes so bar charts adapt
+    if w != tr._overlay_width
+        tr._overlay_width = w
+        build_triage_content!(tr, m.project_info)
+    end
+
     overlay_rect = center(area, w, h)
 
     # Clear the background behind the overlay so underlying content doesn't bleed through
@@ -92,11 +99,22 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
         # ── Compat range lines (visual summary) ──
         pkgs = _parse_resolver_log(combined)
         if !isempty(pkgs)
-            # Use a generous bar width so even closely-spaced version ranges
-            # are visually distinguishable.  Horizontal scrolling handles overflow.
-            bar_w = 60
+            # Dynamic bar width: scale with overlay width so bars compress in
+            # narrow terminals.  Clamp to keep bars readable (min 20) and avoid
+            # excessive width in very wide terminals (max 80).
+            overlay_w = tr._overlay_width > 0 ? tr._overlay_width : 100
+            bar_w = clamp(overlay_w ÷ 2, 20, 80)
 
-            push!(lines, [Span("  Compat Ranges", tstyle(:accent, bold = true))])
+            push!(lines, [Span("  Compatibility Ranges", tstyle(:accent, bold = true))])
+            push!(
+                lines,
+                [
+                    Span(
+                        "  Allowed version ranges per dependency — overlapping bars are compatible.",
+                        tstyle(:text_dim),
+                    ),
+                ],
+            )
             push!(lines, [Span("  " * "─"^bar_w, tstyle(:text_dim))])
             push!(lines, [Span("")])
             append!(lines, _build_ver_bars(pkgs, bar_w))
