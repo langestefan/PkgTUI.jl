@@ -3,14 +3,14 @@
 [![Test](https://github.com/langestefan/PkgTUI.jl/actions/workflows/Test.yml/badge.svg?branch=main)](https://github.com/langestefan/PkgTUI.jl/actions/workflows/Test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/langestefan/PkgTUI.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/langestefan/PkgTUI.jl)
 
-PkgTUI brings a full-featured terminal interface to [Pkg.jl](https://pkgdocs.julialang.org/), built with [Tachikoma.jl](https://github.com/kahliburke/Tachikoma.jl). Browse packages, check for updates, explore the registry, visualize dependencies, and profile compile times — all without leaving the terminal.
+PkgTUI brings a full-featured terminal interface to [Pkg.jl](https://pkgdocs.julialang.org/), built with [Tachikoma.jl](https://github.com/kahliburke/Tachikoma.jl). Browse packages, check for updates, explore the registry, visualize dependencies, and profile — all without leaving the terminal.
 
 <div align="center">
 <img src="demo.gif" alt="PkgTUI demo" width="800">
 </div>
 
 > [!WARNING]
-> `PkgTUI.jl` is in a very experimental stage!
+> `PkgTUI.jl` is in a very experimental stage! **Use at your own risk.**
 > Please report any issues you encounter, and feel free to contribute!
 
 ## Installation
