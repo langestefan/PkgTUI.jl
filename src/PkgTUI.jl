@@ -59,9 +59,9 @@ function (@main)(ARGS)
             println("  l        Toggle log pane")
             return 0
         elseif startswith(arg, "--project=")
-            project = arg[length("--project=")+1:end]
+            project = arg[(length("--project=")+1):end]
         elseif startswith(arg, "-p=")
-            project = arg[length("-p=")+1:end]
+            project = arg[(length("-p=")+1):end]
         end
     end
     pkgtui(; project = project)

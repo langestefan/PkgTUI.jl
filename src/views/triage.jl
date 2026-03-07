@@ -91,7 +91,7 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
     # Prepare error text
     error_text = tr.error_message
     if startswith(error_text, "Error in add: ")
-        error_text = error_text[length("Error in add: ")+1:end]
+        error_text = error_text[(length("Error in add: ")+1):end]
     end
     combined = error_text * (isempty(strip(tr.pkg_log)) ? "" : "\n" * tr.pkg_log)
     is_unsat = occursin("unsatisfiable", lowercase(combined))
@@ -174,7 +174,7 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
                     idx = 80
                 end
                 push!(detail_lines, remaining[1:idx])
-                remaining = remaining[idx+1:end]
+                remaining = remaining[(idx+1):end]
             end
             !isempty(remaining) && push!(detail_lines, remaining)
         end
@@ -729,14 +729,14 @@ function _build_ver_bars(
                 while j <= length(buf) && buf[j] in ('├', '─', '┤', '│')
                     j += 1
                 end
-                push!(spans, Span(String(buf[i:j-1]), tstyle(style)))
+                push!(spans, Span(String(buf[i:(j-1)]), tstyle(style)))
                 i = j
             else
                 j = i
                 while j <= length(buf) && !(buf[j] in ('├', '─', '┤', '│'))
                     j += 1
                 end
-                push!(spans, Span(String(buf[i:j-1]), tstyle(:text_dim)))
+                push!(spans, Span(String(buf[i:(j-1)]), tstyle(:text_dim)))
                 i = j
             end
         end

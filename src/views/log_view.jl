@@ -184,14 +184,14 @@ function _render_highlighted_line!(
             # No more matches — render rest normally
             remaining = line[pos:end]
             if length(remaining) > max_width - (cx - x)
-                remaining = remaining[1:max_width-(cx-x)]
+                remaining = remaining[1:(max_width-(cx-x))]
             end
             set_string!(buf, cx, y, remaining, base_style)
             break
         else
             # Render text before match
             if first(match_start) > pos
-                before = line[pos:first(match_start)-1]
+                before = line[pos:(first(match_start)-1)]
                 set_string!(buf, cx, y, before, base_style)
                 cx += length(before)
             end

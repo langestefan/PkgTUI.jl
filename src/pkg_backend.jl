@@ -704,5 +704,3 @@ function measure_disk_sizes(packages::Vector{PackageRow})::Vector{PackageMetrics
     sort!(metrics; by = m -> m.disk_size_bytes, rev = true)
     return metrics
 end
-
-

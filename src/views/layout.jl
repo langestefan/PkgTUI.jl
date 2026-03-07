@@ -340,7 +340,7 @@ function render_env_switcher(m::PkgTUIApp, area::Rect, buf::Buffer)
         display_name = label
         # Shorten long paths
         if length(display_name) > inner.width - 4
-            display_name = "..." * display_name[end-inner.width+7:end]
+            display_name = "..." * display_name[(end-inner.width+7):end]
         end
 
         if env_idx != 0 && env_idx == m.env_selected

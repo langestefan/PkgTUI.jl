@@ -382,7 +382,7 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
 
                     # Truncate name if it would overflow into version column
                     display_name = if length(entry.name) > max_name
-                        entry.name[1:max_name-1] * "…"
+                        entry.name[1:(max_name-1)] * "…"
                     else
                         entry.name
                     end

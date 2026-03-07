@@ -95,7 +95,7 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
                 tstyle(:primary)
             end
             display_name =
-                length(pkg.name) > name_width ? pkg.name[1:name_width-1] * "…" : pkg.name
+                length(pkg.name) > name_width ? pkg.name[1:(name_width-1)] * "…" : pkg.name
             set_string!(buf, name_col, y, display_name, name_style)
 
             # Version column (always shown)
@@ -199,14 +199,15 @@ function render_registry_detail(pkg::RegistryPackage, area::Rect, buf::Buffer)
         set_string!(buf, x, y, "UUID: ", tstyle(:text_dim))
         uuid_str = string(pkg.uuid)
         display_uuid =
-            length(uuid_str) > area.width - 10 ? uuid_str[1:area.width-10] : uuid_str
+            length(uuid_str) > area.width - 10 ? uuid_str[1:(area.width-10)] : uuid_str
         set_string!(buf, x + 6, y, display_uuid, tstyle(:text))
         y += 1
     end
 
     if pkg.repo !== nothing
         set_string!(buf, x, y, "Repo: ", tstyle(:text_dim))
-        repo_str = length(pkg.repo) > area.width - 10 ? pkg.repo[1:area.width-10] : pkg.repo
+        repo_str =
+            length(pkg.repo) > area.width - 10 ? pkg.repo[1:(area.width-10)] : pkg.repo
         set_string!(buf, x + 6, y, repo_str, tstyle(:text))
         y += 1
     end
