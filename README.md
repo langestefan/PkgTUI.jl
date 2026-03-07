@@ -6,8 +6,12 @@
 PkgTUI brings a full-featured terminal interface to [Pkg.jl](https://pkgdocs.julialang.org/), built with [Tachikoma.jl](https://github.com/kahliburke/Tachikoma.jl). Browse packages, check for updates, explore the registry, visualize dependencies, and profile compile times — all without leaving the terminal.
 
 <div align="center">
-<img src="demo.svg" alt="PkgTUI demo" width="800">
+<img src="demo.gif" alt="PkgTUI demo" width="800">
 </div>
+
+> [!WARNING]
+> `PkgTUI.jl` is in a very experimental stage!
+> Please report any issues you encounter, and feel free to contribute!
 
 ## Installation
 
