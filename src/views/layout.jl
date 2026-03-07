@@ -236,6 +236,12 @@ function render_env_switcher(m::PkgTUIApp, area::Rect, buf::Buffer)
     w = min(60, area.width - 4)
     env_rect = center(area, w, h)
 
+    # Clear the background behind the overlay so underlying content doesn't bleed through
+    blank = " "^env_rect.width
+    for y = env_rect.y:(env_rect.y + env_rect.height - 1)
+        set_string!(buf, env_rect.x, y, blank, tstyle(:text))
+    end
+
     inner = render(
         Block(
             title = "Switch Environment",

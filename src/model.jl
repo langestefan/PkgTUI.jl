@@ -111,6 +111,9 @@ end
     loading::Bool = false
     dry_run_output::Union{DryRunDiff,Nothing} = nothing
     show_dry_run::Bool = false
+    dry_run_sections::Dict{Symbol,Bool} = Dict{Symbol,Bool}()  # section kind → expanded?
+    dry_run_selected::Int = 1  # selected row in virtual line list (1-based)
+    dry_run_scroll::Int = 0    # scroll offset for dry-run panel
     conflicts_focused::Bool = false  # true = keyboard focus on conflicts panel
     updating_names::Set{String} = Set{String}()   # packages currently being updated
     updated_names::Set{String} = Set{String}()     # packages successfully updated this session
@@ -182,6 +185,8 @@ end
     pkg_log::String = ""                # Pkg IO output during install
     scroll_pane::ScrollPane = ScrollPane(String[]; following = false)
     pkg_output_expanded::Bool = false   # Pkg output collapsed by default
+    h_offset::Int = 0                   # horizontal scroll offset
+    _lines::Vector{Vector{Span}} = Vector{Span}[]  # stored lines for h-scroll render
 end
 
 """State for the full-screen Log tab."""

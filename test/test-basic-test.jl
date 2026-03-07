@@ -316,7 +316,7 @@ end
 
 @testitem "render updates tab" tags = [:view] begin
     using Tachikoma
-    using PkgTUI: PkgTUIApp, UpdateInfo, ConflictInfo, DryRunDiff, DryRunEntry, extract_conflicts, render_updates_tab
+    using PkgTUI: PkgTUIApp, UpdateInfo, ConflictInfo, DryRunDiff, DryRunEntry, extract_conflicts, render_updates_tab, handle_updates_keys!
 
     m = PkgTUIApp()
     area = Rect(1, 1, 100, 30)
@@ -367,6 +367,27 @@ end
     m.updates_state.dry_run_output = DryRunDiff(error = "something went wrong")
     buf5 = Tachikoma.Buffer(area)
     render_updates_tab(m, area, buf5)
+    @test true
+
+    # Dry-run section toggling
+    m.updates_state.dry_run_output = DryRunDiff(entries = [
+        DryRunEntry(name = "Foo", kind = :upgraded, old_version = "1.0.0", new_version = "2.0.0"),
+        DryRunEntry(name = "Bar", kind = :upgraded, old_version = "0.5.0", new_version = "1.0.0"),
+        DryRunEntry(name = "OldPkg", kind = :removed, old_version = "3.0.0"),
+        DryRunEntry(name = "NewPkg", kind = :added, new_version = "0.1.0"),
+    ])
+    m.updates_state.dry_run_sections = Dict{Symbol,Bool}()
+    m.updates_state.dry_run_selected = 1
+    m.updates_state.dry_run_scroll = 0
+
+    # Collapse upgraded section via Enter
+    handle_updates_keys!(m, KeyEvent(:enter))
+    @test m.updates_state.dry_run_sections[:upgraded] == false
+
+    # Navigate down and re-render
+    handle_updates_keys!(m, KeyEvent(:down))
+    buf6 = Tachikoma.Buffer(area)
+    render_updates_tab(m, area, buf6)
     @test true
 end
 
@@ -931,8 +952,8 @@ end
 
     build_triage_content!(tr, pi)
 
-    # Scroll pane should have styled content (Vector{Vector{Span}})
-    lines = tr.scroll_pane.content
+    # Lines are now stored in _lines field (scroll pane uses render callback for h-scroll)
+    lines = tr._lines
     @test length(lines) > 5
     # Extract text from styled spans for content checks
     combined = join([join(s.content for s in line) for line in lines], "\n")

@@ -382,6 +382,9 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         diff = evt.value::DryRunDiff
         m.updates_state.dry_run_output = diff
         m.updates_state.show_dry_run = true
+        m.updates_state.dry_run_sections = Dict{Symbol,Bool}()
+        m.updates_state.dry_run_selected = 1
+        m.updates_state.dry_run_scroll = 0
         n = length(diff.entries)
         if diff.error !== nothing
             push_log!(m, "Dry-run failed: $(diff.error)")

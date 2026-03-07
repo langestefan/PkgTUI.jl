@@ -44,7 +44,7 @@ function render_triage_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
     render(
         StatusBar(
             left = [
-                Span("  ↑↓ scroll ", tstyle(:text_dim)),
+                Span("  ↑↓←→ scroll ", tstyle(:text_dim)),
                 Span(
                     "[o]utput ",
                     tr.pkg_output_expanded ? tstyle(:success) : tstyle(:accent),
@@ -199,8 +199,23 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
 
     push!(lines, [Span("")])
 
-    # Build the scroll pane with styled content
-    tr.scroll_pane = ScrollPane(lines; following = false)
+    # Store lines and build scroll pane with render callback for horizontal scroll
+    tr._lines = lines
+    render_fn = (buf, area, v_offset) -> begin
+        h = tr.h_offset
+        for i in 1:area.height
+            idx = v_offset + i
+            (idx < 1 || idx > length(tr._lines)) && continue
+            y = area.y + i - 1
+            col = area.x - h
+            for span in tr._lines[idx]
+                col > right(area) && break
+                col = set_string!(buf, col, y, span.content, span.style;
+                                  max_x = right(area))
+            end
+        end
+    end
+    tr.scroll_pane = ScrollPane(render_fn, length(lines); following = false)
 end
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -914,6 +929,16 @@ function handle_triage_keys!(m::PkgTUIApp, evt::KeyEvent)
         return
     end
 
+    if evt.key == :left
+        tr.h_offset = max(0, tr.h_offset - 4)
+        return
+    end
+
+    if evt.key == :right
+        tr.h_offset += 4
+        return
+    end
+
     if evt.key == :pageup
         tr.scroll_pane.offset = max(0, tr.scroll_pane.offset - 10)
         tr.scroll_pane.following = false
@@ -923,6 +948,11 @@ function handle_triage_keys!(m::PkgTUIApp, evt::KeyEvent)
     if evt.key == :pagedown
         tr.scroll_pane.offset += 10
         tr.scroll_pane.following = false
+        return
+    end
+
+    if evt.key == :home
+        tr.h_offset = 0
         return
     end
 

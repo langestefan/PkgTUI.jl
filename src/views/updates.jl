@@ -217,6 +217,72 @@ function render_update_row(
     end
 end
 
+# ── Dry-run section helpers ───────────────────────────────────────────────────
+
+"""Section display order for the dry-run diff panel."""
+const _DRY_RUN_SECTION_ORDER = [:upgraded, :downgraded, :added, :removed]
+
+"""Return the ordered list of sections that have entries in `diff`."""
+function _dry_run_section_order(diff::Union{DryRunDiff,Nothing})::Vector{Symbol}
+    diff === nothing && return Symbol[]
+    order = Symbol[]
+    for kind in _DRY_RUN_SECTION_ORDER
+        any(e -> e.kind == kind, diff.entries) && push!(order, kind)
+    end
+    return order
+end
+
+"""Section icon, label, and style for a given kind."""
+function _section_meta(kind::Symbol)
+    if kind == :upgraded
+        return "⬆", "upgraded", :success
+    elseif kind == :downgraded
+        return "⬇", "downgraded", :warning
+    elseif kind == :added
+        return "+", "added", :success
+    elseif kind == :removed
+        return "−", "removed", :error
+    else
+        return " ", string(kind), :text_dim
+    end
+end
+
+"""
+    _build_dry_run_lines(st) → Vector{NamedTuple}
+
+Build a flat list of virtual lines for the dry-run panel.
+Each line is a NamedTuple with `:kind` (∈ {:header, :entry, :blank})
+and associated data.  Section headers are always present;
+entries appear only when the section is expanded.
+"""
+function _build_dry_run_lines(st::UpdatesState)
+    diff = st.dry_run_output
+    diff === nothing && return NamedTuple[]
+    (diff.error !== nothing || isempty(diff.entries)) && return NamedTuple[]
+
+    lines = NamedTuple[]
+    sections = _dry_run_section_order(diff)
+    for (si, kind) in enumerate(sections)
+        entries = filter(e -> e.kind == kind, diff.entries)
+        expanded = get(st.dry_run_sections, kind, true)
+        icon, label, style_sym = _section_meta(kind)
+        push!(
+            lines,
+            (kind = :header, section = kind, section_idx = si,
+             icon = icon, label = label, count = length(entries),
+             expanded = expanded, style_sym = style_sym),
+        )
+        if expanded
+            for entry in entries
+                push!(lines, (kind = :entry, entry = entry, style_sym = style_sym))
+            end
+        end
+        # blank separator between sections
+        si < length(sections) && push!(lines, (kind = :blank,))
+    end
+    return lines
+end
+
 """Render dry-run output panel."""
 function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
     st = m.updates_state
@@ -234,67 +300,77 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     diff = st.dry_run_output
     if diff !== nothing
-        y = inner.y
-        max_y = inner.y + inner.height - 1
-
         if diff.error !== nothing
-            set_string!(buf, inner.x + 1, y, "Error: $(diff.error)", tstyle(:error))
+            set_string!(buf, inner.x + 1, inner.y, "Error: $(diff.error)", tstyle(:error))
         elseif isempty(diff.entries)
-            set_string!(buf, inner.x + 1, y, "No changes — environment is up to date.", tstyle(:success))
+            set_string!(buf, inner.x + 1, inner.y, "No changes — environment is up to date.", tstyle(:success))
         else
-            # Header
-            name_col = inner.x + 1
-            change_col = inner.x + 3
-            old_col = inner.x + 28
+            vlines = _build_dry_run_lines(st)
+            visible = inner.height
+            total = length(vlines)
+
+            # Clamp scroll so selected line is visible
+            st.dry_run_selected = clamp(st.dry_run_selected, 1, total)
+            if st.dry_run_selected > st.dry_run_scroll + visible
+                st.dry_run_scroll = st.dry_run_selected - visible
+            elseif st.dry_run_selected <= st.dry_run_scroll
+                st.dry_run_scroll = max(0, st.dry_run_selected - 1)
+            end
+            st.dry_run_scroll = clamp(st.dry_run_scroll, 0, max(0, total - visible))
+
+            # Column positions
+            name_col = inner.x + 4
+            old_col = inner.x + 30
             arrow_col = inner.x + 42
             new_col = inner.x + 46
 
-            set_string!(buf, change_col, y, "Package", tstyle(:title, bold = true))
-            set_string!(buf, old_col, y, "Current", tstyle(:title, bold = true))
-            set_string!(buf, new_col, y, "After Update", tstyle(:title, bold = true))
-            y += 1
-            if y <= max_y
-                for x = inner.x:(inner.x+inner.width-1)
-                    set_char!(buf, x, y, '─', tstyle(:border))
+            for vi in 1:visible
+                idx = vi + st.dry_run_scroll
+                idx > total && break
+                y = inner.y + vi - 1
+                vl = vlines[idx]
+                is_sel = (idx == st.dry_run_selected)
+
+                if vl.kind == :header
+                    chevron = vl.expanded ? "▼" : "▶"
+                    sel_marker = is_sel ? "▸ " : "  "
+                    header_text = "$(sel_marker)$(chevron) $(vl.icon) $(vl.count) package$(vl.count == 1 ? "" : "s") $(vl.label)"
+                    style = is_sel ? tstyle(vl.style_sym, bold = true) : tstyle(vl.style_sym)
+                    set_string!(buf, inner.x + 1, y, header_text, style)
+
+                elseif vl.kind == :entry
+                    entry = vl.entry
+                    icon, _ = _section_meta(entry.kind)
+                    entry_style = tstyle(vl.style_sym)
+
+                    set_string!(buf, inner.x + 3, y, icon, entry_style)
+                    set_string!(buf, name_col, y, entry.name, entry_style)
+
+                    if entry.old_version !== nothing
+                        set_string!(buf, old_col, y, entry.old_version, tstyle(:text_dim))
+                    elseif entry.kind == :added
+                        set_string!(buf, old_col, y, "—", tstyle(:text_dim))
+                    end
+
+                    if entry.kind in (:upgraded, :downgraded)
+                        set_string!(buf, arrow_col, y, "→", tstyle(:text_dim))
+                    end
+
+                    if entry.new_version !== nothing
+                        nstyle = entry.kind == :downgraded ? tstyle(:warning, bold = true) : tstyle(:success, bold = true)
+                        set_string!(buf, new_col, y, entry.new_version, nstyle)
+                    elseif entry.kind == :removed
+                        set_string!(buf, new_col, y, "—", tstyle(:text_dim))
+                    end
                 end
-                y += 1
+                # :blank lines are just empty — skip rendering
             end
 
-            for entry in diff.entries
-                y > max_y && break
-                icon, style = if entry.kind == :upgraded
-                    "⬆", tstyle(:success)
-                elseif entry.kind == :downgraded
-                    "⬇", tstyle(:warning)
-                elseif entry.kind == :added
-                    "+", tstyle(:success, bold = true)
-                elseif entry.kind == :removed
-                    "−", tstyle(:error)
-                else
-                    " ", tstyle(:text_dim)
-                end
-
-                set_string!(buf, name_col, y, icon, style)
-                set_string!(buf, change_col, y, entry.name, style)
-
-                if entry.old_version !== nothing
-                    set_string!(buf, old_col, y, entry.old_version, tstyle(:text_dim))
-                elseif entry.kind == :added
-                    set_string!(buf, old_col, y, "—", tstyle(:text_dim))
-                end
-
-                if entry.kind in (:upgraded, :downgraded)
-                    set_string!(buf, arrow_col, y, "→", tstyle(:text_dim))
-                end
-
-                if entry.new_version !== nothing
-                    new_style = entry.kind == :downgraded ? tstyle(:warning, bold = true) : tstyle(:success, bold = true)
-                    set_string!(buf, new_col, y, entry.new_version, new_style)
-                elseif entry.kind == :removed
-                    set_string!(buf, new_col, y, "—", tstyle(:text_dim))
-                end
-
-                y += 1
+            # Scroll indicator
+            if total > visible
+                pct = round(Int, (st.dry_run_scroll + visible) / total * 100)
+                scroll_text = "↑↓ $(min(pct, 100))%"
+                set_string!(buf, inner.x + inner.width - length(scroll_text) - 1, inner.y + inner.height - 1, scroll_text, tstyle(:text_dim))
             end
         end
     end
@@ -316,7 +392,7 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
     render(
         StatusBar(
             left = [
-                Span("  [Esc] Close", tstyle(:text_dim)),
+                Span("  [Esc] Close  [Enter] Expand/Collapse", tstyle(:text_dim)),
                 Span(summary_text, tstyle(:text)),
             ],
             right = [],
@@ -336,10 +412,38 @@ end
 function handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
     st = m.updates_state
 
-    # Dry-run mode: only Esc exits
+    # Dry-run mode: Esc exits, Enter/Space toggles sections, arrows navigate
     if st.show_dry_run
+        vlines = _build_dry_run_lines(st)
+        total = length(vlines)
         if evt.key == :escape
             st.show_dry_run = false
+            return true
+        elseif evt.key == :up
+            st.dry_run_selected = max(1, st.dry_run_selected - 1)
+            return true
+        elseif evt.key == :down
+            st.dry_run_selected = min(total, st.dry_run_selected + 1)
+            return true
+        elseif evt.key == :pageup
+            st.dry_run_selected = max(1, st.dry_run_selected - 10)
+            return true
+        elseif evt.key == :pagedown
+            st.dry_run_selected = min(total, st.dry_run_selected + 10)
+            return true
+        elseif evt.key == :home
+            st.dry_run_selected = 1
+            return true
+        elseif evt.key == :end_key || (evt.key == :char && evt.char == 'G')
+            st.dry_run_selected = total
+            return true
+        elseif evt.key == :enter || (evt.key == :char && evt.char == ' ')
+            if st.dry_run_selected >= 1 && st.dry_run_selected <= total
+                vl = vlines[st.dry_run_selected]
+                if vl.kind == :header
+                    st.dry_run_sections[vl.section] = !get(st.dry_run_sections, vl.section, true)
+                end
+            end
             return true
         end
         return false
