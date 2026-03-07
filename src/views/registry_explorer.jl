@@ -63,8 +63,10 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         end
         union!(installed_set, st.installed_names)
 
-        # Column positions: Name | Version | Status
-        ver_x = results_inner.x + 24
+        # Column positions: Name | Version | Status  (scale with panel width)
+        name_col = results_inner.x + 2
+        name_width = max(16, div(results_inner.width * 55, 100) - 2)
+        ver_x = results_inner.x + name_width + 2
         status_x = ver_x + 10
 
         for i = 1:visible
@@ -81,7 +83,7 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
                 set_string!(buf, results_inner.x, y, "▶", tstyle(:accent))
             end
 
-            # Name column
+            # Name column (truncate to fit)
             name_style = if is_installed
                 tstyle(:success, bold = is_selected)
             elseif is_failed
@@ -91,7 +93,8 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             else
                 tstyle(:primary)
             end
-            set_string!(buf, results_inner.x + 2, y, pkg.name, name_style)
+            display_name = length(pkg.name) > name_width ? pkg.name[1:name_width-1] * "…" : pkg.name
+            set_string!(buf, name_col, y, display_name, name_style)
 
             # Version column (always shown)
             if pkg.latest_version !== nothing

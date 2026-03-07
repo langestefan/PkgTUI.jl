@@ -316,7 +316,7 @@ end
 
 @testitem "render updates tab" tags = [:view] begin
     using Tachikoma
-    using PkgTUI: PkgTUIApp, UpdateInfo, ConflictInfo, extract_conflicts, render_updates_tab
+    using PkgTUI: PkgTUIApp, UpdateInfo, ConflictInfo, DryRunDiff, DryRunEntry, extract_conflicts, render_updates_tab
 
     m = PkgTUIApp()
     area = Rect(1, 1, 100, 30)
@@ -349,9 +349,24 @@ end
 
     # Dry-run view
     m.updates_state.show_dry_run = true
-    m.updates_state.dry_run_output = "Update preview output"
+    m.updates_state.dry_run_output = DryRunDiff(entries = [
+        DryRunEntry(name = "Foo", kind = :upgraded, old_version = "1.0.0", new_version = "2.0.0"),
+        DryRunEntry(name = "NewPkg", kind = :added, new_version = "0.1.0"),
+    ])
     buf3 = Tachikoma.Buffer(area)
     render_updates_tab(m, area, buf3)
+    @test true
+
+    # Dry-run view with no changes
+    m.updates_state.dry_run_output = DryRunDiff()
+    buf4 = Tachikoma.Buffer(area)
+    render_updates_tab(m, area, buf4)
+    @test true
+
+    # Dry-run view with error
+    m.updates_state.dry_run_output = DryRunDiff(error = "something went wrong")
+    buf5 = Tachikoma.Buffer(area)
+    render_updates_tab(m, area, buf5)
     @test true
 end
 
@@ -501,6 +516,12 @@ end
     @test m.quit == false
     Tachikoma.update!(m, KeyEvent('q'))
     @test m.quit == true
+
+    # Environment switcher
+    m2 = PkgTUIApp()
+    @test m2.env_switching == false
+    Tachikoma.update!(m2, KeyEvent('e'))
+    @test m2.env_switching == true
 end
 
 @testitem "installed tab key handling" tags = [:event] begin
@@ -647,6 +668,22 @@ end
     consumed = handle_updates_keys!(m, KeyEvent('c'))
     @test consumed == true
     @test m.updates_state.conflicts_focused == false
+end
+
+@testitem "updates tab conflicts empty toast" tags = [:event] begin
+    using Tachikoma
+    using PkgTUI: PkgTUIApp, handle_updates_keys!
+
+    m = PkgTUIApp()
+    m.active_tab = 2
+
+    # No conflicts — 'c' should produce a toast
+    @test isempty(m.conflicts.conflicts)
+    consumed = handle_updates_keys!(m, KeyEvent('c'))
+    @test consumed == true
+    @test m.updates_state.conflicts_focused == false
+    @test !isempty(m.toasts)
+    @test occursin("No conflicts", m.toasts[end].message)
 end
 
 @testitem "graph view renders with packages" tags = [:view] begin

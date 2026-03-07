@@ -72,7 +72,7 @@ function render_layout(m::PkgTUIApp, f::Frame)
     end
 
     right_spans = [
-        Span("[ctrl+e]env ", tstyle(:text_dim)),
+        Span("[e]nv ", tstyle(:text_dim)),
         Span("[l]og ", tstyle(:text_dim)),
         Span("[?]help ", tstyle(:text_dim)),
         Span("[q]uit ", tstyle(:text_dim)),
@@ -175,10 +175,9 @@ function render_help_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
         "Global Keys:",
         "  q / Esc      Quit PkgTUI",
         "  1-6          Switch tabs",
-        "  Ctrl+E       Switch environment",
+        "  e            Switch environment",
         "  l            Toggle log pane",
         "  ?            Toggle this help",
-        "  Ctrl+\\       Change theme",
         "",
         "Installed Tab:",
         "  a            Add package",
@@ -194,6 +193,7 @@ function render_help_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
         "  u            Update selected",
         "  U            Update all",
         "  d            Dry-run preview",
+        "  c            Toggle conflicts panel",
         "  R            Refresh",
         "",
         "Registry Tab:",

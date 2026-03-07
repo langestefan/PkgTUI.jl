@@ -285,15 +285,97 @@ function fetch_outdated(io::IOBuffer)::Tuple{Vector{UpdateInfo},String}
 end
 
 """
-    dry_run_update(io::IOBuffer) → String
+    dry_run_update(io::IOBuffer) → DryRunDiff
 
-Show what `Pkg.update` would change without actually updating.
-Captures the status diff.
+Simulate `Pkg.update` in a temporary copy of the current environment
+and return a structured diff of manifest changes.
 """
-function dry_run_update(io::IOBuffer)::String
-    buf = IOBuffer()
-    Pkg.status(; outdated = true, mode = Pkg.PKGMODE_PROJECT, io = buf)
-    return String(take!(buf))
+function dry_run_update(io::IOBuffer)::DryRunDiff
+    ctx = Pkg.Types.Context()
+    proj_dir = dirname(ctx.env.project_file)
+    project_file = ctx.env.project_file
+    manifest_file = ctx.env.manifest_file
+
+    if !isfile(project_file)
+        return DryRunDiff(error = "No Project.toml found")
+    end
+
+    # Parse the old manifest for version comparison
+    old_versions = Dict{String,String}()
+    if isfile(manifest_file)
+        old_manifest = TOML.parsefile(manifest_file)
+        # Manifest format: julia_version header + deps section (or flat)
+        deps = get(old_manifest, "deps", old_manifest)
+        for (name, entries) in deps
+            entries isa Vector || continue
+            for entry in entries
+                entry isa Dict || continue
+                if haskey(entry, "version")
+                    old_versions[name] = string(entry["version"])
+                end
+            end
+        end
+    end
+
+    entries = DryRunEntry[]
+    try
+        mktempdir() do tmpdir
+            # Copy project and manifest files
+            cp(project_file, joinpath(tmpdir, "Project.toml"))
+            if isfile(manifest_file)
+                cp(manifest_file, joinpath(tmpdir, "Manifest.toml"))
+            end
+
+            # Activate temp env, resolve & update
+            Pkg.activate(tmpdir; io = io)
+            try
+                Pkg.update(; io = io)
+
+                # Parse the new manifest
+                new_manifest_file = joinpath(tmpdir, "Manifest.toml")
+                new_versions = Dict{String,String}()
+                if isfile(new_manifest_file)
+                    new_manifest = TOML.parsefile(new_manifest_file)
+                    new_deps = get(new_manifest, "deps", new_manifest)
+                    for (name, ents) in new_deps
+                        ents isa Vector || continue
+                        for entry in ents
+                            entry isa Dict || continue
+                            if haskey(entry, "version")
+                                new_versions[name] = string(entry["version"])
+                            end
+                        end
+                    end
+                end
+
+                # Compute diff
+                all_names = sort(collect(union(keys(old_versions), keys(new_versions))))
+                for name in all_names
+                    has_old = haskey(old_versions, name)
+                    has_new = haskey(new_versions, name)
+                    if has_old && has_new
+                        ov = old_versions[name]
+                        nv = new_versions[name]
+                        if ov != nv
+                            kind = VersionNumber(nv) > VersionNumber(ov) ? :upgraded : :downgraded
+                            push!(entries, DryRunEntry(name = name, kind = kind, old_version = ov, new_version = nv))
+                        end
+                    elseif has_new && !has_old
+                        push!(entries, DryRunEntry(name = name, kind = :added, new_version = new_versions[name]))
+                    elseif has_old && !has_new
+                        push!(entries, DryRunEntry(name = name, kind = :removed, old_version = old_versions[name]))
+                    end
+                end
+            finally
+                # Re-activate original environment
+                Pkg.activate(proj_dir; io = io)
+            end
+        end
+    catch e
+        return DryRunDiff(error = sprint(showerror, e))
+    end
+
+    return DryRunDiff(entries = entries)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -462,7 +462,15 @@ Non-conflict packages are shown separately with their own sections.
 """
 function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{Span}}
     lines = Vector{Span}[]
-    label_w = 13
+
+    # Compute label width dynamically from all labels that will appear
+    all_labels = String["Available", "Intersection"]
+    for pkg in pkgs
+        for c in pkg.constraints
+            c.source != "fixed" && push!(all_labels, c.source)
+        end
+    end
+    label_w = maximum(length, all_labels; init = 13) + 1
 
     # ── 1. Cross-reference: find conflict targets ──
     # A package that has any is_conflict constraint is a "conflict target" —
@@ -628,7 +636,7 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
 
         push!(
             lines,
-            [Span("    Intersection: ", tstyle(:text_dim)), Span("✗ none", tstyle(:error))],
+            [Span("    $(rpad("Intersection", label_w))", tstyle(:text_dim)), Span("✗ none", tstyle(:error))],
         )
         push!(lines, [Span("")])
     end

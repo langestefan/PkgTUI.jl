@@ -185,6 +185,9 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
         elseif c == 'l'
             m.show_log = !m.show_log
             return
+        elseif c == 'e'
+            start_env_switcher!(m)
+            return
         elseif c in ('1', '2', '3', '4', '5', '6')
             new_tab = Int(c - '0')
             m.active_tab = new_tab
@@ -205,9 +208,6 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
         end
     elseif evt.key == :escape
         m.quit = true
-        return
-    elseif evt.key == :ctrl && evt.char == 'e'
-        start_env_switcher!(m)
         return
     end
 end
@@ -379,10 +379,17 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         set_status!(m, "$(length(updates)) updates available", :warning)
 
     elseif evt.id == :dry_run
-        output = evt.value::String
-        m.updates_state.dry_run_output = output
+        diff = evt.value::DryRunDiff
+        m.updates_state.dry_run_output = diff
         m.updates_state.show_dry_run = true
-        push_log!(m, "Dry-run complete.")
+        n = length(diff.entries)
+        if diff.error !== nothing
+            push_log!(m, "Dry-run failed: $(diff.error)")
+        elseif n == 0
+            push_log!(m, "Dry-run complete — no changes.")
+        else
+            push_log!(m, "Dry-run complete — $n package$(n == 1 ? "" : "s") would change.")
+        end
 
     elseif evt.id == :why
         output = evt.value::String

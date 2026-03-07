@@ -34,6 +34,20 @@ end
     can_update::Bool = true   # ⌃ = true, ⌅ = false
 end
 
+"""A single package change in a dry-run diff."""
+@kwdef struct DryRunEntry
+    name::String
+    kind::Symbol   # :upgraded, :downgraded, :added, :removed, :unchanged
+    old_version::Union{String,Nothing} = nothing
+    new_version::Union{String,Nothing} = nothing
+end
+
+"""Result of a dry-run manifest diff."""
+@kwdef struct DryRunDiff
+    entries::Vector{DryRunEntry} = DryRunEntry[]
+    error::Union{String,Nothing} = nothing
+end
+
 """A package found in the registry search."""
 @kwdef mutable struct RegistryPackage
     name::String
@@ -95,7 +109,7 @@ end
     selected::Int = 1
     scroll_offset::Int = 0
     loading::Bool = false
-    dry_run_output::Union{String,Nothing} = nothing
+    dry_run_output::Union{DryRunDiff,Nothing} = nothing
     show_dry_run::Bool = false
     conflicts_focused::Bool = false  # true = keyboard focus on conflicts panel
     updating_names::Set{String} = Set{String}()   # packages currently being updated

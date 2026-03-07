@@ -132,7 +132,7 @@ function render_updates_header(area::Rect, buf::Buffer)
     set_string!(buf, cx + 2, y, "Package", style)
     set_string!(buf, cx + 25, y, "Current", style)
     set_string!(buf, cx + 38, y, "Latest", style)
-    set_string!(buf, cx + 51, y, "Status", style)
+    set_string!(buf, cx + 51, y, "Blocked By", style)
 
     for x = area.x:(area.x+area.width-1)
         set_char!(buf, x, y + 1, '─', tstyle(:border))
@@ -204,9 +204,11 @@ function render_update_row(
             buf,
             status_x,
             y,
-            info.blocker,
+            "⌅ " * info.blocker,
             selected ? tstyle(:accent) : tstyle(:error),
         )
+    elseif info.can_update
+        set_string!(buf, status_x, y, "—", tstyle(:text_dim))
     end
 
     # Selection indicator
@@ -222,7 +224,7 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
 
     inner = render(
         Block(
-            title = "Dry Run — Update Preview",
+            title = "Dry Run — Manifest Diff",
             border_style = tstyle(:accent),
             box = BOX_DOUBLE,
         ),
@@ -230,27 +232,93 @@ function render_dry_run_panel(m::PkgTUIApp, area::Rect, buf::Buffer)
         buf,
     )
 
-    if st.dry_run_output !== nothing
-        lines = split(st.dry_run_output, '\n')
-        for (i, line) in enumerate(lines)
-            y = inner.y + i - 1
-            y > inner.y + inner.height - 1 && break
-            style = if occursin("⌃", line)
-                tstyle(:success)
-            elseif occursin("⌅", line)
-                tstyle(:warning)
-            else
-                tstyle(:text)
+    diff = st.dry_run_output
+    if diff !== nothing
+        y = inner.y
+        max_y = inner.y + inner.height - 1
+
+        if diff.error !== nothing
+            set_string!(buf, inner.x + 1, y, "Error: $(diff.error)", tstyle(:error))
+        elseif isempty(diff.entries)
+            set_string!(buf, inner.x + 1, y, "No changes — environment is up to date.", tstyle(:success))
+        else
+            # Header
+            name_col = inner.x + 1
+            change_col = inner.x + 3
+            old_col = inner.x + 28
+            arrow_col = inner.x + 42
+            new_col = inner.x + 46
+
+            set_string!(buf, change_col, y, "Package", tstyle(:title, bold = true))
+            set_string!(buf, old_col, y, "Current", tstyle(:title, bold = true))
+            set_string!(buf, new_col, y, "After Update", tstyle(:title, bold = true))
+            y += 1
+            if y <= max_y
+                for x = inner.x:(inner.x+inner.width-1)
+                    set_char!(buf, x, y, '─', tstyle(:border))
+                end
+                y += 1
             end
-            # Truncate long lines
-            display_line = length(line) > inner.width - 2 ? line[1:inner.width-2] : line
-            set_string!(buf, inner.x + 1, y, display_line, style)
+
+            for entry in diff.entries
+                y > max_y && break
+                icon, style = if entry.kind == :upgraded
+                    "⬆", tstyle(:success)
+                elseif entry.kind == :downgraded
+                    "⬇", tstyle(:warning)
+                elseif entry.kind == :added
+                    "+", tstyle(:success, bold = true)
+                elseif entry.kind == :removed
+                    "−", tstyle(:error)
+                else
+                    " ", tstyle(:text_dim)
+                end
+
+                set_string!(buf, name_col, y, icon, style)
+                set_string!(buf, change_col, y, entry.name, style)
+
+                if entry.old_version !== nothing
+                    set_string!(buf, old_col, y, entry.old_version, tstyle(:text_dim))
+                elseif entry.kind == :added
+                    set_string!(buf, old_col, y, "—", tstyle(:text_dim))
+                end
+
+                if entry.kind in (:upgraded, :downgraded)
+                    set_string!(buf, arrow_col, y, "→", tstyle(:text_dim))
+                end
+
+                if entry.new_version !== nothing
+                    new_style = entry.kind == :downgraded ? tstyle(:warning, bold = true) : tstyle(:success, bold = true)
+                    set_string!(buf, new_col, y, entry.new_version, new_style)
+                elseif entry.kind == :removed
+                    set_string!(buf, new_col, y, "—", tstyle(:text_dim))
+                end
+
+                y += 1
+            end
         end
     end
 
+    # Summary footer
+    summary_parts = String[]
+    if diff !== nothing && diff.error === nothing && !isempty(diff.entries)
+        n_up = count(e -> e.kind == :upgraded, diff.entries)
+        n_down = count(e -> e.kind == :downgraded, diff.entries)
+        n_add = count(e -> e.kind == :added, diff.entries)
+        n_rm = count(e -> e.kind == :removed, diff.entries)
+        n_up > 0 && push!(summary_parts, "⬆ $n_up upgraded")
+        n_down > 0 && push!(summary_parts, "⬇ $n_down downgraded")
+        n_add > 0 && push!(summary_parts, "+ $n_add added")
+        n_rm > 0 && push!(summary_parts, "− $n_rm removed")
+    end
+    summary_text = isempty(summary_parts) ? "" : "  " * join(summary_parts, "  ")
+
     render(
         StatusBar(
-            left = [Span("  [Esc] Close dry-run preview", tstyle(:text_dim))],
+            left = [
+                Span("  [Esc] Close", tstyle(:text_dim)),
+                Span(summary_text, tstyle(:text)),
+            ],
             right = [],
         ),
         rows[2],
@@ -288,8 +356,12 @@ function handle_updates_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
 
     if evt.key == :char
         c = evt.char
-        if c == 'c' && !isempty(m.conflicts.conflicts)
-            st.conflicts_focused = true
+        if c == 'c'
+            if !isempty(m.conflicts.conflicts)
+                st.conflicts_focused = true
+            else
+                push_toast!(m, "No conflicts found", style = :text_dim, icon = "ℹ")
+            end
             return true
         elseif c == 'u' && !isempty(st.updates)
             idx = st.selected
