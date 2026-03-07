@@ -192,6 +192,7 @@ end
     pkg_log::String = ""                # Pkg IO output during install
     scroll_pane::ScrollPane = ScrollPane(String[]; following = false)
     pkg_output_expanded::Bool = false   # Pkg output collapsed by default
+    compat_expanded::Bool = false        # non-conflict compat ranges collapsed by default
     h_offset::Int = 0                   # horizontal scroll offset
     _lines::Vector{Vector{Span}} = Vector{Span}[]  # stored lines for h-scroll render
     _overlay_width::Int = 0              # last overlay width (triggers rebuild on resize)

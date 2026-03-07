@@ -53,6 +53,10 @@ function render_triage_overlay(m::PkgTUIApp, area::Rect, buf::Buffer)
             left = [
                 Span("  ↑↓←→ scroll ", tstyle(:text_dim)),
                 Span(
+                    "[c]ompat ",
+                    tr.compat_expanded ? tstyle(:success) : tstyle(:accent),
+                ),
+                Span(
                     "[o]utput ",
                     tr.pkg_output_expanded ? tstyle(:success) : tstyle(:accent),
                 ),
@@ -105,19 +109,52 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
             overlay_w = tr._overlay_width > 0 ? tr._overlay_width : 100
             bar_w = clamp(overlay_w ÷ 2, 20, 80)
 
-            push!(lines, [Span("  Compatibility Ranges", tstyle(:accent, bold = true))])
-            push!(
-                lines,
-                [
-                    Span(
-                        "  Allowed version ranges per dependency — overlapping bars are compatible.",
-                        tstyle(:text_dim),
-                    ),
-                ],
-            )
-            push!(lines, [Span("  " * "─"^bar_w, tstyle(:text_dim))])
-            push!(lines, [Span("")])
-            append!(lines, _build_ver_bars(pkgs, bar_w))
+            # Split into conflict (always shown) and non-conflict (collapsible) bars
+            conflict_bars = _build_ver_bars(pkgs, bar_w; only = :conflict)
+            nonconflict_bars = _build_ver_bars(pkgs, bar_w; only = :nonconflict)
+
+            if !isempty(conflict_bars)
+                push!(lines, [Span("  Compatibility Ranges", tstyle(:accent, bold = true))])
+                push!(
+                    lines,
+                    [
+                        Span(
+                            "  Allowed version ranges per dependency — overlapping bars are compatible.",
+                            tstyle(:text_dim),
+                        ),
+                    ],
+                )
+                push!(lines, [Span("  " * "─"^bar_w, tstyle(:text_dim))])
+                push!(lines, [Span("")])
+                append!(lines, conflict_bars)
+            end
+
+            # Non-conflict sections (collapsible)
+            if !isempty(nonconflict_bars)
+                n_nc = length(filter(b -> any(s -> occursin(r"^    [A-Z]", s.content), b), nonconflict_bars))
+                if tr.compat_expanded
+                    push!(
+                        lines,
+                        [
+                            Span("  Other Dependencies  ", tstyle(:text)),
+                            Span("[c] collapse ▴", tstyle(:success)),
+                        ],
+                    )
+                    push!(lines, [Span("  " * "─"^bar_w, tstyle(:text_dim))])
+                    push!(lines, [Span("")])
+                    append!(lines, nonconflict_bars)
+                else
+                    push!(
+                        lines,
+                        [
+                            Span("  Other Dependencies  ", tstyle(:text)),
+                            Span("[c] expand ▾", tstyle(:accent)),
+                            Span("  ($n_nc packages hidden)", tstyle(:text_dim)),
+                        ],
+                    )
+                    push!(lines, [Span("  " * "─"^bar_w, tstyle(:text_dim))])
+                end
+            end
         end
     end
 
@@ -575,8 +612,11 @@ bar per constraint source (including the conflicting package's range):
     Intersection:  ✗ none
 
 Non-conflict packages are shown separately with their own sections.
+
+Use `only=:conflict` to emit only conflict sections, `only=:nonconflict`
+for only non-conflict sections, or `only=:all` (default) for both.
 """
-function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{Span}}
+function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int; only::Symbol = :all)::Vector{Vector{Span}}
     lines = Vector{Span}[]
 
     # Compute label width dynamically from all labels that will appear
@@ -712,16 +752,21 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
     # ── 2. Conflict sections — per-section axis ──
     shown_in_conflict = Set{String}()
 
+    # Always compute shown_in_conflict even if we skip rendering,
+    # so that non-conflict filtering works correctly.
     for target_name in conflict_targets
         haskey(pkg_by_name, target_name) || continue
         target = pkg_by_name[target_name]
         push!(shown_in_conflict, target_name)
-
-        # Also mark all packages that appear as constraint sources — they
-        # should NOT get their own non-conflict section below.
         for c in target.constraints
             push!(shown_in_conflict, c.source)
         end
+    end
+
+    if only != :nonconflict
+    for target_name in conflict_targets
+        haskey(pkg_by_name, target_name) || continue
+        target = pkg_by_name[target_name]
 
         # Header
         push!(lines, [Span("    ✗ Conflict: $(target_name)", tstyle(:error, bold = true))])
@@ -783,8 +828,10 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
         )
         push!(lines, [Span("")])
     end
+    end  # only != :nonconflict
 
     # ── 3. Non-conflict package sections (only those not involved in a conflict) ──
+    if only != :conflict
     for pkg in pkgs
         pkg.name in shown_in_conflict && continue
 
@@ -811,6 +858,7 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
         end
         push!(lines, [Span("")])
     end
+    end  # only != :conflict
 
     return lines
 end
@@ -1134,6 +1182,12 @@ function handle_triage_keys!(m::PkgTUIApp, evt::KeyEvent)
 
     if evt.key == :char && evt.char == 'o'
         tr.pkg_output_expanded = !tr.pkg_output_expanded
+        build_triage_content!(tr, m.project_info)
+        return
+    end
+
+    if evt.key == :char && evt.char == 'c'
+        tr.compat_expanded = !tr.compat_expanded
         build_triage_content!(tr, m.project_info)
         return
     end
