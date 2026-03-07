@@ -906,6 +906,243 @@ end
     @test occursin("Compatibility", combined)
 end
 
+@testitem "triage conflict-centric visualization" tags = [:unit, :fast] begin
+    using Tachikoma
+    using PkgTUI: _parse_resolver_log, _build_ver_bars
+
+    # Use the real BilevelJuMP conflict example from the user's scenario
+    resolver_log = """
+    Unsatisfiable requirements detected for package JuMP [4076af6c]:
+    JuMP [4076af6c] log:
+    ├─possible versions are: 0.18.3 - 1.30.0 or uninstalled
+    ├─restricted to versions 1.29.4 - 1 by SolarPosition [5b9d1343], leaving only versions: 1.29.4 - 1.30.0
+    └─restricted by compatibility requirements with BilevelJuMP [485130c0] to versions: 0.21.0 - 0.21.10 — no versions left
+      └─BilevelJuMP [485130c0] log:
+        ├─possible versions are: 0.1.0 - 0.6.2 or uninstalled
+        └─restricted to versions 0.4.0 by an explicit requirement, leaving only versions: 0.4.0
+    SolarPosition [5b9d1343] log:
+    ├─possible versions are: 0.4.2 or uninstalled
+    └─is fixed to version 0.4.2
+    """
+
+    pkgs = _parse_resolver_log(resolver_log)
+    @test length(pkgs) == 3
+
+    # Verify the parser captured BilevelJuMP's constraint range on JuMP
+    jump_pkg = findfirst(p -> p.name == "JuMP", pkgs)
+    @test jump_pkg !== nothing
+    jump = pkgs[jump_pkg]
+    conflict_c = findfirst(c -> c.is_conflict, jump.constraints)
+    @test conflict_c !== nothing
+    @test jump.constraints[conflict_c].source == "BilevelJuMP"
+    @test jump.constraints[conflict_c].ranges == [("0.21.0", "0.21.10")]
+
+    lines = _build_ver_bars(pkgs, 40)
+    combined = join([join(s.content for s in line) for line in lines], "\n")
+
+    # Should show conflict section for JuMP (the actual conflicted dependency)
+    @test occursin("Conflict", combined)
+    @test occursin("JuMP", combined)
+    @test occursin("Available", combined)
+
+    # Both constraint sources should appear as bars on JuMP's chart
+    @test occursin("SolarPosition", combined)
+    @test occursin("BilevelJuMP", combined)
+    @test occursin("Intersection", combined)
+
+    # Conflict constraint (BilevelJuMP) should appear BEFORE non-conflict (SolarPosition)
+    bilevel_pos = findfirst("BilevelJuMP", combined)
+    solar_pos = findfirst("SolarPosition", combined)
+    @test bilevel_pos !== nothing
+    @test solar_pos !== nothing
+    @test first(bilevel_pos) < first(solar_pos)
+
+    # Should NOT show separate package sections for other packages
+    # (no "SolarPosition" header with its own Available/fixed bars,
+    #  no "BilevelJuMP" header with its own Available/explicit bars)
+    @test !occursin("explicit", combined)
+    @test !occursin("fixed", combined)
+
+    # Count "Available" — should appear exactly once (for JuMP only)
+    @test count("Available", combined) == 1
+end
+
+@testitem "triage nested tree parsing" tags = [:unit, :fast] begin
+    using Tachikoma
+    using PkgTUI: _parse_resolver_log, _build_ver_bars
+
+    # Realistic nested Pkg resolver output where packages are indented
+    # within the tree structure (this is how Pkg actually formats errors).
+    nested_log = """
+    Unsatisfiable requirements detected for package SolarPosition [5b9d1343]:
+     SolarPosition [5b9d1343] log:
+       ├─possible versions are: 0.4.2 or uninstalled
+       ├─restricted by compatibility requirements with JuMP [4076af6c] to versions: 0.4.2
+       │ └─JuMP [4076af6c] log:
+       │   ├─possible versions are: 0.18.3 - 1.30.0 or uninstalled
+       │   ├─restricted by compatibility requirements with BilevelJuMP [485130c0] to versions: 0.21.0 - 0.21.10
+       │   │ └─BilevelJuMP [485130c0] log:
+       │   │   ├─possible versions are: 0.1.0 - 0.6.2 or uninstalled
+       │   │   └─restricted to versions 0.4.0 by an explicit requirement, leaving only versions: 0.4.0
+       │   └─restricted by compatibility requirements with SolarPosition [5b9d1343] to versions: 1.29.4 - 1.30.0 — no versions left
+       └─SolarPosition [5b9d1343] is fixed to version 0.4.2
+    """
+
+    pkgs = _parse_resolver_log(nested_log)
+    @test length(pkgs) == 3
+
+    # Verify packages are correctly identified
+    names = [p.name for p in pkgs]
+    @test "SolarPosition" in names
+    @test "JuMP" in names
+    @test "BilevelJuMP" in names
+
+    # JuMP should be the conflict target (it has is_conflict constraints)
+    jump_pkg = findfirst(p -> p.name == "JuMP", pkgs)
+    jump = pkgs[jump_pkg]
+    @test any(c -> c.is_conflict, jump.constraints)
+
+    # JuMP's constraints should be from BilevelJuMP (non-conflict narrowing)
+    # and SolarPosition (conflict — no versions left)
+    bilevel_c = findfirst(c -> c.source == "BilevelJuMP", jump.constraints)
+    @test bilevel_c !== nothing
+    @test first(jump.constraints[bilevel_c].ranges)[1] == "0.21.0"
+
+    solar_c = findfirst(c -> c.source == "SolarPosition", jump.constraints)
+    @test solar_c !== nothing
+    @test jump.constraints[solar_c].is_conflict == true
+
+    # SolarPosition should have the "fixed" constraint (NOT attributed to BilevelJuMP)
+    sp_pkg = findfirst(p -> p.name == "SolarPosition", pkgs)
+    sp = pkgs[sp_pkg]
+    @test any(c -> c.source == "fixed", sp.constraints)
+    @test !any(c -> c.is_conflict, sp.constraints)
+
+    # BilevelJuMP should have the "explicit" constraint only
+    bp_pkg = findfirst(p -> p.name == "BilevelJuMP", pkgs)
+    bp = pkgs[bp_pkg]
+    @test any(c -> c.source == "explicit", bp.constraints)
+    @test !any(c -> c.is_conflict, bp.constraints)
+
+    # Build bars — JuMP should be the conflict target
+    lines = _build_ver_bars(pkgs, 45)
+    combined = join([join(s.content for s in line) for line in lines], "\n")
+    @test occursin("Conflict: JuMP", combined)
+    @test occursin("BilevelJuMP", combined)
+    @test occursin("SolarPosition", combined)
+
+    # BilevelJuMP (first range min=0.21.0) should appear BEFORE SolarPosition (first range min=1.29.4)
+    bilevel_pos = findfirst("BilevelJuMP", combined)
+    solar_pos = findfirst("SolarPosition", combined)
+    @test first(bilevel_pos) < first(solar_pos)
+end
+
+@testitem "triage multi-range constraints" tags = [:unit, :fast] begin
+    using Tachikoma
+    using PkgTUI: _parse_resolver_log, _build_ver_bars, _parse_ver_ranges
+
+    # _parse_ver_ranges should split comma-separated ranges
+    ranges = _parse_ver_ranges("0.0.1 - 3.1.1, 9.33.0 - 9.7.0")
+    @test length(ranges) == 2
+    @test ranges[1] == ("0.0.1", "3.1.1")
+    @test ranges[2] == ("9.33.0", "9.7.0")
+
+    # Single range still works
+    ranges2 = _parse_ver_ranges("1.0.0 - 2.0.0")
+    @test length(ranges2) == 1
+    @test ranges2[1] == ("1.0.0", "2.0.0")
+
+    # Single version (no dash)
+    ranges3 = _parse_ver_ranges("0.4.0")
+    @test length(ranges3) == 1
+    @test ranges3[1] == ("0.4.0", "0.4.0")
+
+    # "or uninstalled" is stripped
+    ranges4 = _parse_ver_ranges("11.0.0 - 11.14.0 or uninstalled")
+    @test length(ranges4) == 1
+    @test ranges4[1] == ("11.0.0", "11.14.0")
+
+    # Multi-range with "or uninstalled"
+    ranges5 = _parse_ver_ranges("0.0.1 - 3.1.1, 9.33.0 - 10.0.0 or uninstalled")
+    @test length(ranges5) == 2
+    @test ranges5[1] == ("0.0.1", "3.1.1")
+    @test ranges5[2] == ("9.33.0", "10.0.0")
+
+    # Real ModelingToolkit-like conflict with multi-range constraint
+    resolver_log = """
+    Unsatisfiable requirements detected for package ModelingToolkit [961ee093]:
+    ModelingToolkit [961ee093] log:
+    ├─possible versions are: 0.0.1 - 11.14.0 or uninstalled
+    ├─restricted by compatibility requirements with SymbolicUtils [d1185830] to versions: 0.0.1 - 3.1.1, 9.33.0 - 9.7.0 — no versions left
+    ├─restricted by compatibility requirements with SolarPosition [5b9d1343] to versions: 11.0.0 - 11.14.0 or uninstalled — no versions left
+    └─restricted to versions 11.0.0 - 11.14.0 by an explicit requirement, leaving only versions: 11.0.0 - 11.14.0
+    SymbolicUtils [d1185830] log:
+    ├─possible versions are: 0.0.1 - 3.5.0 or uninstalled
+    └─is fixed to version 3.5.0
+    SolarPosition [5b9d1343] log:
+    ├─possible versions are: 0.4.2 or uninstalled
+    └─is fixed to version 0.4.2
+    """
+
+    pkgs = _parse_resolver_log(resolver_log)
+    @test length(pkgs) == 3
+
+    # ModelingToolkit is the conflict target
+    mt = pkgs[findfirst(p -> p.name == "ModelingToolkit", pkgs)]
+    @test any(c -> c.is_conflict, mt.constraints)
+
+    # SymbolicUtils constraint should have TWO ranges (multi-range)
+    su_c = findfirst(c -> c.source == "SymbolicUtils", mt.constraints)
+    @test su_c !== nothing
+    @test mt.constraints[su_c].is_conflict == true
+    @test length(mt.constraints[su_c].ranges) == 2
+    @test mt.constraints[su_c].ranges[1] == ("0.0.1", "3.1.1")
+    @test mt.constraints[su_c].ranges[2] == ("9.33.0", "9.7.0")
+
+    # SolarPosition constraint should have ONE range (with "or uninstalled" stripped)
+    sp_c = findfirst(c -> c.source == "SolarPosition", mt.constraints)
+    @test sp_c !== nothing
+    @test mt.constraints[sp_c].is_conflict == true
+    @test length(mt.constraints[sp_c].ranges) == 1
+    @test mt.constraints[sp_c].ranges[1] == ("11.0.0", "11.14.0")
+
+    # Build bars — should show both SymbolicUtils segments
+    lines = _build_ver_bars(pkgs, 50)
+    combined = join([join(s.content for s in line) for line in lines], "\n")
+    @test occursin("Conflict: ModelingToolkit", combined)
+    @test occursin("SymbolicUtils", combined)
+    @test occursin("SolarPosition", combined)
+    # Multi-range should show both ranges in the label
+    @test occursin("0.0.1", combined)
+    @test occursin("3.1.1", combined)
+    @test occursin("9.33.0", combined)
+    @test occursin("9.7.0", combined)
+end
+
+@testitem "triage no-conflict fallback" tags = [:unit, :fast] begin
+    using Tachikoma
+    using PkgTUI: _parse_resolver_log, _build_ver_bars
+
+    # A resolver log without cross-package conflicts (just version constraints)
+    resolver_log = """
+    SomePkg [abcdef12] log:
+    ├─possible versions are: 1.0.0 - 3.0.0 or uninstalled
+    └─restricted to versions 2.0.0 - 3.0.0 by an explicit requirement, leaving only versions: 2.0.0 - 3.0.0
+    """
+
+    pkgs = _parse_resolver_log(resolver_log)
+    @test length(pkgs) == 1
+
+    lines = _build_ver_bars(pkgs, 40)
+    combined = join([join(s.content for s in line) for line in lines], "\n")
+
+    # No conflict section — just a normal package section
+    @test !occursin("Conflict", combined)
+    @test occursin("SomePkg", combined)
+    @test occursin("Available", combined)
+    @test occursin("explicit", combined)
+end
+
 @testitem "triage key handling" tags = [:event] begin
     using Tachikoma
     using PkgTUI:

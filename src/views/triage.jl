@@ -71,10 +71,13 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
     lines = Vector{Span}[]
 
     # ── Header ──
-    push!(lines, [
-        Span("  Package: ", tstyle(:text_dim)),
-        Span(tr.package_name, tstyle(:accent, bold = true)),
-    ])
+    push!(
+        lines,
+        [
+            Span("  Package: ", tstyle(:text_dim)),
+            Span(tr.package_name, tstyle(:accent, bold = true)),
+        ],
+    )
     push!(lines, [Span("")])
 
     # Prepare error text
@@ -125,10 +128,13 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
 
     push!(lines, [Span("")])
     if tr.pkg_output_expanded
-        push!(lines, [
-            Span("  Error Details  ", tstyle(:text)),
-            Span("[o] collapse ▴", tstyle(:success)),
-        ])
+        push!(
+            lines,
+            [
+                Span("  Error Details  ", tstyle(:text)),
+                Span("[o] collapse ▴", tstyle(:success)),
+            ],
+        )
         push!(lines, [Span("  " * "─"^40, tstyle(:text_dim))])
         push!(lines, [Span("")])
         if is_unsat
@@ -141,11 +147,14 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
             end
         end
     else
-        push!(lines, [
-            Span("  Error Details  ", tstyle(:text)),
-            Span("[o] expand ▾", tstyle(:accent)),
-            Span("  ($(length(detail_lines)) lines hidden)", tstyle(:text_dim)),
-        ])
+        push!(
+            lines,
+            [
+                Span("  Error Details  ", tstyle(:text)),
+                Span("[o] expand ▾", tstyle(:accent)),
+                Span("  ($(length(detail_lines)) lines hidden)", tstyle(:text_dim)),
+            ],
+        )
         push!(lines, [Span("  " * "─"^40, tstyle(:text_dim))])
     end
 
@@ -158,22 +167,25 @@ function build_triage_content!(tr::TriageState, project_info::ProjectInfo)
     env_path = something(project_info.path, "unknown")
     env_name = something(project_info.name, basename(dirname(env_path)))
 
-    push!(lines, [
-        Span("  Julia version:  ", tstyle(:text_dim)),
-        Span("v$julia_ver", tstyle(:text)),
-    ])
-    push!(lines, [
-        Span("  Environment:    ", tstyle(:text_dim)),
-        Span(env_name, tstyle(:text)),
-    ])
-    push!(lines, [
-        Span("  Env path:       ", tstyle(:text_dim)),
-        Span(env_path, tstyle(:text)),
-    ])
-    push!(lines, [
-        Span("  Direct deps:    ", tstyle(:text_dim)),
-        Span("$(project_info.dep_count)", tstyle(:text)),
-    ])
+    push!(
+        lines,
+        [Span("  Julia version:  ", tstyle(:text_dim)), Span("v$julia_ver", tstyle(:text))],
+    )
+    push!(
+        lines,
+        [Span("  Environment:    ", tstyle(:text_dim)), Span(env_name, tstyle(:text))],
+    )
+    push!(
+        lines,
+        [Span("  Env path:       ", tstyle(:text_dim)), Span(env_path, tstyle(:text))],
+    )
+    push!(
+        lines,
+        [
+            Span("  Direct deps:    ", tstyle(:text_dim)),
+            Span("$(project_info.dep_count)", tstyle(:text)),
+        ],
+    )
 
     # ── Suggestions ──
     push!(lines, [Span("")])
@@ -218,12 +230,37 @@ function _parse_ver_range(s::AbstractString)::Tuple{String,String}
     return (s, s)
 end
 
+"""
+    _parse_ver_ranges(s) → Vector{Tuple{String,String}}
+
+Parse a comma-separated version range string like
+`"0.0.1 - 3.1.1, 9.33.0 - 9.7.0"` into a vector of `(min, max)` pairs.
+Also strips trailing `"or uninstalled"` from the input.
+"""
+function _parse_ver_ranges(s::AbstractString)::Vector{Tuple{String,String}}
+    s = strip(String(s))
+    # Strip trailing "or uninstalled"
+    s = replace(s, r"\s+or\s+uninstalled\s*$"i => "")
+    isempty(s) && return Tuple{String,String}[]
+    ranges = Tuple{String,String}[]
+    for part in split(s, ',')
+        part = strip(String(part))
+        isempty(part) && continue
+        m = match(r"^(.+?)\s+-\s+(.+)$", part)
+        if m !== nothing
+            push!(ranges, (strip(String(m.captures[1])), strip(String(m.captures[2]))))
+        else
+            push!(ranges, (part, part))
+        end
+    end
+    return ranges
+end
+
 # ── Structured types for parsed resolver data ──
 
 struct _VerConstraint
     source::String
-    ver_min::String
-    ver_max::String
+    ranges::Vector{Tuple{String,String}}  # each element is (ver_min, ver_max)
     is_conflict::Bool
 end
 
@@ -239,56 +276,130 @@ end
 
 Parse the Pkg resolver "Unsatisfiable requirements" output into structured
 version info for each package in the conflict chain.
+
+Handles **nested** resolver trees correctly by tracking the indentation
+depth of each `PkgName [uuid] log:` header via a stack.  Content lines
+(possible versions, constraints) are attributed to the nearest ancestor
+package header whose depth is *less* than the current line's depth.
 """
 function _parse_resolver_log(text::String)::Vector{_PkgVerInfo}
-    pkgs = _PkgVerInfo[]
-    cur_name = ""
-    cur_pmin = ""
-    cur_pmax = ""
-    cur_cs = _VerConstraint[]
+    # --- data accumulators (keyed by name, insertion-ordered) ---
+    pkg_names = String[]
+    pkg_possible = Dict{String,Tuple{String,String}}()
+    pkg_constraints = Dict{String,Vector{_VerConstraint}}()
+
+    # Stack of (name, char_depth) — outermost package first
+    pkg_stack = Tuple{String,Int}[]
 
     for raw_line in split(text, '\n')
         line = strip(String(raw_line))
         isempty(line) && continue
 
-        # Package header: "PkgName [uuid] log:"
+        # ── Compute character depth: count of chars before first ASCII letter ──
+        raw_str = String(raw_line)
+        depth = 0
+        found_alpha = false
+        for ch in raw_str
+            if isletter(ch) && isascii(ch)
+                found_alpha = true
+                break
+            end
+            depth += 1
+        end
+        found_alpha || continue   # line has no ASCII letters — skip
+
+        # ── Package header: "PkgName [uuid] log:" ──
         m = match(r"([A-Za-z]\w+)\s+\[[^\]]+\]\s+log:", line)
         if m !== nothing
-            if !isempty(cur_name) && !isempty(cur_pmin)
-                push!(pkgs, _PkgVerInfo(cur_name, cur_pmin, cur_pmax, copy(cur_cs)))
+            name = String(m.captures[1])
+            # Pop stack entries at same or deeper level (leaving scope)
+            while !isempty(pkg_stack) && last(pkg_stack)[2] >= depth
+                pop!(pkg_stack)
             end
-            cur_name = String(m.captures[1])
-            cur_pmin = cur_pmax = ""
-            cur_cs = _VerConstraint[]
+            push!(pkg_stack, (name, depth))
+            if !haskey(pkg_constraints, name)
+                push!(pkg_names, name)
+                pkg_possible[name] = ("", "")
+                pkg_constraints[name] = _VerConstraint[]
+            end
             continue
         end
 
-        # Possible versions: "possible versions are: X - Y or uninstalled"
+        # ── Determine owning package from the stack ──
+        # Walk the stack from deepest to shallowest; the first entry whose
+        # depth is strictly less than the current line's depth owns this line.
+        active = ""
+        for i = length(pkg_stack):-1:1
+            if pkg_stack[i][2] < depth
+                active = pkg_stack[i][1]
+                break
+            end
+        end
+        if isempty(active) && !isempty(pkg_stack)
+            active = last(pkg_stack)[1]
+        end
+        isempty(active) && continue
+
+        # ── Possible versions: "possible versions are: X - Y or uninstalled" ──
         m = match(r"possible versions are:\s*(.+?)\s+or\s+uninstalled", line)
         if m !== nothing
-            cur_pmin, cur_pmax = _parse_ver_range(String(m.captures[1]))
+            pmin, pmax = _parse_ver_range(String(m.captures[1]))
+            pkg_possible[active] = (pmin, pmax)
             continue
         end
 
-        # Fixed: "PkgName [uuid] is fixed to version X.Y.Z"
+        # ── Fixed: "PkgName [uuid] is fixed to version X.Y.Z" ──
         m = match(r"is fixed to version\s+(\S+)", line)
         if m !== nothing
             v = String(m.captures[1])
-            push!(cur_cs, _VerConstraint("fixed", v, v, false))
+            push!(pkg_constraints[active], _VerConstraint("fixed", [(v, v)], false))
             continue
         end
 
-        # Conflict: "restricted by compatibility requirements with PKG [uuid] to versions: uninstalled"
+        # ── Conflict with range: "... to versions: X - Y — no versions left" ──
+        m = match(
+            r"restricted by compatibility requirements with\s+(\w[\w.]*)\s+\[[^\]]+\]\s+to versions:\s*(.+?)\s*(?:—|--|—)\s*no versions left",
+            line,
+        )
+        if m !== nothing
+            ranges = _parse_ver_ranges(String(m.captures[2]))
+            push!(
+                pkg_constraints[active],
+                _VerConstraint(String(m.captures[1]), ranges, true),
+            )
+            continue
+        end
+
+        # ── Conflict (uninstalled): "... to versions: uninstalled" ──
         m = match(
             r"restricted by compatibility requirements with\s+(\w[\w.]*)\s+\[[^\]]+\]\s+to versions:\s*uninstalled",
             line,
         )
         if m !== nothing
-            push!(cur_cs, _VerConstraint(String(m.captures[1]), "", "", true))
+            push!(
+                pkg_constraints[active],
+                _VerConstraint(String(m.captures[1]), Tuple{String,String}[], true),
+            )
             continue
         end
 
-        # Restricted with remaining: "restricted to versions X by SOURCE, leaving only versions: Y"
+        # ── Non-conflict compatibility constraint (no "no versions left") ──
+        # "restricted by compatibility requirements with PKG [uuid] to versions: X - Y"
+        # This narrows the range but still has versions left.
+        m = match(
+            r"restricted by compatibility requirements with\s+(\w[\w.]*)\s+\[[^\]]+\]\s+to versions:\s*(.+)",
+            line,
+        )
+        if m !== nothing
+            ranges = _parse_ver_ranges(String(m.captures[2]))
+            push!(
+                pkg_constraints[active],
+                _VerConstraint(String(m.captures[1]), ranges, false),
+            )
+            continue
+        end
+
+        # ── Restricted with remaining: "restricted to versions X by SOURCE, leaving only versions: Y" ──
         m = match(
             r"restricted to versions\s+(.+?)\s+by\s+(.+?),\s*leaving only versions:\s*(.+)",
             line,
@@ -301,26 +412,29 @@ function _parse_resolver_log(text::String)::Vector{_PkgVerInfo}
                 # Strip UUID brackets like [abcd1234-...] and any trailing text
                 replace(source_raw, r"\s*\[[^\]]+\].*" => "")
             end
-            rmin, rmax = _parse_ver_range(String(m.captures[3]))
-            push!(cur_cs, _VerConstraint(source, rmin, rmax, false))
+            ranges = _parse_ver_ranges(String(m.captures[3]))
+            push!(pkg_constraints[active], _VerConstraint(source, ranges, false))
             continue
         end
 
-        # Restricted by explicit without "leaving" clause
+        # ── Restricted by explicit without "leaving" clause ──
         m = match(
             r"restricted to versions\s+(.+?)\s+by\s+an\s+explicit\s+requirement",
             line,
         )
-        if m !== nothing && !any(c -> c.source == "explicit", cur_cs)
-            rmin, rmax = _parse_ver_range(String(m.captures[1]))
-            push!(cur_cs, _VerConstraint("explicit", rmin, rmax, false))
+        if m !== nothing && !any(c -> c.source == "explicit", pkg_constraints[active])
+            ranges = _parse_ver_ranges(String(m.captures[1]))
+            push!(pkg_constraints[active], _VerConstraint("explicit", ranges, false))
             continue
         end
     end
 
-    # Save last package
-    if !isempty(cur_name) && !isempty(cur_pmin)
-        push!(pkgs, _PkgVerInfo(cur_name, cur_pmin, cur_pmax, copy(cur_cs)))
+    # ── Build result vector in insertion order ──
+    pkgs = _PkgVerInfo[]
+    for name in pkg_names
+        pmin, pmax = pkg_possible[name]
+        isempty(pmin) && continue
+        push!(pkgs, _PkgVerInfo(name, pmin, pmax, pkg_constraints[name]))
     end
 
     return pkgs
@@ -329,21 +443,40 @@ end
 """
     _build_ver_bars(pkgs, line_w) → Vector{Vector{Span}}
 
-Build a proportional line-chart of version ranges for all packages in the
-conflict.  Every range is drawn on a shared horizontal axis so that
-overlapping / non-overlapping regions are immediately visible.
+Build a bars-only proportional line-chart of version ranges.
+Every range is drawn on a shared horizontal axis so that overlapping /
+non-overlapping regions are immediately visible.
 
-Each range is rendered as:
+**Conflict-centric grouping**: when package A requires dependency B but
+no versions satisfy the constraint (conflict), the visualization groups
+all constraints on B under a `✗ Conflict: B` header, then shows one
+bar per constraint source (including the conflicting package's range):
 
-    source   min├────────┤max
+    ✗ Conflict: JuMP
+    Available      ├──────────────────────────────────────┤  0.18.3 — 1.30.0
+    BilevelJuMP    ├────────┤                               0.21.0 — 0.21.10
+    SolarPosition                             ├────────────┤  1.29.4 — 1.30.0
+    Intersection:  ✗ none
 
-A conflict (no valid versions) is shown as a red  ✗  marker.
+Non-conflict packages are shown separately with their own sections.
 """
 function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{Span}}
     lines = Vector{Span}[]
     label_w = 13
 
-    # ── Compute a single global axis across ALL packages & constraints ──
+    # ── 1. Cross-reference: find conflict targets ──
+    # A package that has any is_conflict constraint is a "conflict target" —
+    # its version range can't be satisfied.  We show ONLY bars for that
+    # package's constraints (Available + each constraint source).
+    pkg_by_name = Dict(p.name => p for p in pkgs)
+    conflict_targets = String[]  # names of packages whose deps can't be satisfied
+    for pkg in pkgs
+        if any(c -> c.is_conflict, pkg.constraints)
+            push!(conflict_targets, pkg.name)
+        end
+    end
+
+    # ── 2. Compute a single global axis across ALL packages & constraints ──
     global_min = Inf
     global_max = -Inf
     for pkg in pkgs
@@ -352,97 +485,165 @@ function _build_ver_bars(pkgs::Vector{_PkgVerInfo}, line_w::Int)::Vector{Vector{
         global_min = min(global_min, pmin)
         global_max = max(global_max, pmax)
         for c in pkg.constraints
-            c.is_conflict && continue
-            global_min = min(global_min, _ver_to_num(c.ver_min))
-            global_max = max(global_max, _ver_to_num(c.ver_max))
+            for (rmin, rmax) in c.ranges
+                isempty(rmin) && continue
+                global_min = min(global_min, _ver_to_num(rmin))
+                global_max = max(global_max, _ver_to_num(rmax))
+            end
         end
     end
     axis_range = global_max - global_min
     axis_range = axis_range > 0 ? axis_range : 1.0
 
     # Helper: version number → column position (0-based, in [0, line_w-1])
-    to_col(v::Float64) = clamp(round(Int, (v - global_min) / axis_range * (line_w - 1)), 0, line_w - 1)
+    to_col(v::Float64) =
+        clamp(round(Int, (v - global_min) / axis_range * (line_w - 1)), 0, line_w - 1)
 
-    for pkg in pkgs
-        # Package name header
-        push!(lines, [Span("    $(pkg.name)", tstyle(:accent, bold = true))])
+    # ── Inner helper: build spans for a (possibly multi-range) line ──
+    # `vranges` is a Vector of (min_str, max_str) pairs, e.g.
+    #   [("0.0.1","3.1.1"), ("9.33.0","9.7.0")]
+    function range_spans(
+        label::String,
+        vranges::Vector{Tuple{String,String}},
+        style::Symbol,
+    )
+        lbl = rpad(label, label_w)
 
-        # Collect all ranges to draw for this package
-        range_entries = Tuple{String,String,String,Symbol,Bool}[]  # (label, vmin_str, vmax_str, style, is_conflict)
-
-        # "Available" = full possible range
-        push!(range_entries, ("Available", pkg.possible_min, pkg.possible_max, :success, false))
-
-        for c in pkg.constraints
-            push!(range_entries, (c.source, c.ver_min, c.ver_max, c.is_conflict ? :error : :warning, c.is_conflict))
-        end
-
-        for (label, vmin_str, vmax_str, style, is_conflict) in range_entries
-            lbl = rpad(label, label_w)
-
-            if is_conflict
-                # No valid versions — show a red ✗ at the center
-                push!(lines, [
-                    Span("    $lbl", tstyle(:text_dim)),
-                    Span(" "^(line_w ÷ 2) * "✗  no versions", tstyle(:error)),
-                ])
-                continue
-            end
-
+        # Compute column segments for each range
+        segments = Tuple{Int,Int}[]
+        for (vmin_str, vmax_str) in vranges
             cmin = to_col(_ver_to_num(vmin_str))
             cmax = to_col(_ver_to_num(vmax_str))
-            cmax = max(cmax, cmin)  # ensure at least zero-width
+            cmax = max(cmax, cmin)
+            push!(segments, (cmin, cmax))
+        end
 
-            # Build the line:  spaces  min_label├───┤max_label
-            min_tag = vmin_str
-            max_tag = vmin_str == vmax_str ? "" : vmax_str
+        # Build text label (all ranges joined by ", ")
+        range_labels = String[]
+        for (vmin, vmax) in vranges
+            if vmin == vmax
+                push!(range_labels, vmin)
+            else
+                push!(range_labels, "$vmin — $vmax")
+            end
+        end
+        tag = join(range_labels, ", ")
 
-            # Characters for drawing the extent line
-            buf = fill(' ', line_w)
+        # Draw all segments onto one line buffer
+        buf = fill(' ', line_w)
+        for (cmin, cmax) in segments
             if cmin == cmax
-                # Point version — single marker
                 buf[cmin+1] = '│'
             else
                 buf[cmin+1] = '├'
-                for i in (cmin+2):cmax
+                for i = (cmin+2):cmax
                     buf[i] = '─'
                 end
                 buf[cmax+1] = '┤'
             end
-
-            spans = Span[Span("    $lbl", tstyle(:text_dim))]
-
-            if cmin == cmax
-                # Point or near-point version — single marker
-                pre = cmin > 0 ? " "^cmin : ""
-                push!(spans, Span(pre, tstyle(:text_dim)))
-                push!(spans, Span("│", tstyle(style)))
-                post_spaces = max(0, line_w - cmin - 1)
-                push!(spans, Span(" "^post_spaces, tstyle(:text_dim)))
-                if isempty(max_tag)
-                    push!(spans, Span("  $min_tag", tstyle(style)))
-                else
-                    push!(spans, Span("  $min_tag — $max_tag", tstyle(style)))
-                end
-            else
-                # Range: prefix spaces, ├───┤, suffix spaces, then labels
-                pre = cmin > 0 ? String(buf[1:cmin]) : ""
-                extent = String(buf[cmin+1:cmax+1])
-                post_len = max(0, line_w - cmax - 1)
-
-                push!(spans, Span(pre, tstyle(:text_dim)))
-                push!(spans, Span(extent, tstyle(style)))
-                push!(spans, Span(" "^post_len, tstyle(:text_dim)))
-                if isempty(max_tag)
-                    push!(spans, Span("  $min_tag", tstyle(style)))
-                else
-                    push!(spans, Span("  $min_tag — $max_tag", tstyle(style)))
-                end
-            end
-
-            push!(lines, spans)
         end
 
+        # Build spans — color bar characters, dim everything else
+        spans = Span[Span("    $lbl", tstyle(:text_dim))]
+        i = 1
+        while i <= length(buf)
+            if buf[i] in ('├', '─', '┤', '│')
+                j = i
+                while j <= length(buf) && buf[j] in ('├', '─', '┤', '│')
+                    j += 1
+                end
+                push!(spans, Span(String(buf[i:j-1]), tstyle(style)))
+                i = j
+            else
+                j = i
+                while j <= length(buf) && !(buf[j] in ('├', '─', '┤', '│'))
+                    j += 1
+                end
+                push!(spans, Span(String(buf[i:j-1]), tstyle(:text_dim)))
+                i = j
+            end
+        end
+
+        push!(spans, Span("  $tag", tstyle(style)))
+        return spans
+    end
+
+    # Convenience overload for a single (min, max) pair (e.g., Available range)
+    range_spans(label::String, vmin::String, vmax::String, style::Symbol) =
+        range_spans(label, [(vmin, vmax)], style)
+
+    # ── 3. Conflict sections — bars only for the conflict target ──
+    # Show ONLY the conflict target's bars: Available range + each constraint
+    # that restricts it (both non-conflict and conflict constraints).
+    # Do NOT show separate sections for other packages involved.
+    shown_in_conflict = Set{String}()
+
+    for target_name in conflict_targets
+        haskey(pkg_by_name, target_name) || continue
+        target = pkg_by_name[target_name]
+        push!(shown_in_conflict, target_name)
+
+        # Also mark all packages that appear as constraint sources — they
+        # should NOT get their own non-conflict section below.
+        for c in target.constraints
+            push!(shown_in_conflict, c.source)
+        end
+
+        # Header
+        push!(lines, [Span("    ✗ Conflict: $(target_name)", tstyle(:error, bold = true))])
+
+        # Bar chart: Available range of the conflict target
+        push!(
+            lines,
+            range_spans("Available", target.possible_min, target.possible_max, :success),
+        )
+
+        # One bar per constraint on this target, sorted by first range min ascending
+        # so bars appear left-to-right on the chart.
+        sorted_cs = sort(
+            target.constraints;
+            by = c -> isempty(c.ranges) ? Inf : _ver_to_num(first(c.ranges)[1]),
+        )
+        for c in sorted_cs
+            c.source == "fixed" && continue   # skip "fixed" — not a requirer
+            if c.is_conflict
+                if !isempty(c.ranges)
+                    # Conflict constraint with known range(s)
+                    push!(lines, range_spans(c.source, c.ranges, :error))
+                else
+                    # Conflict constraint without range (e.g., "to versions: uninstalled")
+                    lbl = rpad(c.source, label_w)
+                    push!(
+                        lines,
+                        [
+                            Span("    $lbl", tstyle(:text_dim)),
+                            Span("✗ none", tstyle(:error)),
+                        ],
+                    )
+                end
+            else
+                push!(lines, range_spans(c.source, c.ranges, :warning))
+            end
+        end
+
+        push!(
+            lines,
+            [Span("    Intersection: ", tstyle(:text_dim)), Span("✗ none", tstyle(:error))],
+        )
+        push!(lines, [Span("")])
+    end
+
+    # ── 4. Non-conflict package sections (only those not involved in a conflict) ──
+    for pkg in pkgs
+        pkg.name in shown_in_conflict && continue
+
+        non_conflict_cs = filter(c -> !c.is_conflict, pkg.constraints)
+
+        push!(lines, [Span("    $(pkg.name)", tstyle(:accent, bold = true))])
+        push!(lines, range_spans("Available", pkg.possible_min, pkg.possible_max, :success))
+        for c in non_conflict_cs
+            push!(lines, range_spans(c.source, c.ranges, :warning))
+        end
         push!(lines, [Span("")])
     end
 
@@ -499,7 +700,10 @@ function _colorize_tree_line(raw::String)::Vector{Span}
     pos = 1
     for (off, len, style) in tokens
         if off > pos
-            push!(spans, Span(String(SubString(raw, pos, prevind(raw, off))), tstyle(:text)))
+            push!(
+                spans,
+                Span(String(SubString(raw, pos, prevind(raw, off))), tstyle(:text)),
+            )
         end
         tok_end = prevind(raw, off + len)
         push!(spans, Span(String(SubString(raw, off, tok_end)), tstyle(style)))
