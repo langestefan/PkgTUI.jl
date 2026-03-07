@@ -333,6 +333,7 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         if pkg_name !== nothing
             delete!(m.registry.installed_names, pkg_name)
         end
+        m.registry.removing_name = nothing
         refresh_all!(m)
 
     elseif evt.id == :update_single || evt.id == :update_all || evt.id == :unpin_and_update
@@ -515,6 +516,7 @@ function execute_modal_action!(m::PkgTUIApp)
 
     if action == :remove
         push_log!(m, "Removing $target...")
+        m.registry.removing_name = target
         spawn_task!(m.tq, :remove) do
             io = IOBuffer()
             result = remove_package(target, io)
@@ -610,6 +612,8 @@ function handle_task_error!(m::PkgTUIApp, id::Symbol, err::Exception)
         m.metrics.profiling = false
     elseif id == :add
         m.registry.installing_name = nothing
+    elseif id == :remove
+        m.registry.removing_name = nothing
     elseif id in (:update_single, :unpin_and_update)
         empty!(m.updates_state.updating_names)
     elseif id == :update_all

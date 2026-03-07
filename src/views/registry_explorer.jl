@@ -76,6 +76,7 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             y = results_inner.y + i - 1
             is_selected = (idx == st.selected)
             is_installing = (st.installing_name == pkg.name)
+            is_removing = (st.removing_name == pkg.name)
             is_installed = (pkg.name in installed_set)
             is_failed = (pkg.name in st.failed_names)
 
@@ -93,7 +94,8 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
             else
                 tstyle(:primary)
             end
-            display_name = length(pkg.name) > name_width ? pkg.name[1:name_width-1] * "…" : pkg.name
+            display_name =
+                length(pkg.name) > name_width ? pkg.name[1:name_width-1] * "…" : pkg.name
             set_string!(buf, name_col, y, display_name, name_style)
 
             # Version column (always shown)
@@ -118,6 +120,16 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
                     "$(spinner_chars[frame]) Installing…",
                     tstyle(:warning, bold = true),
                 )
+            elseif is_removing
+                spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+                frame = mod(m.tick ÷ 4, length(spinner_chars)) + 1
+                set_string!(
+                    buf,
+                    status_x,
+                    y,
+                    "$(spinner_chars[frame]) Removing…",
+                    tstyle(:error, bold = true),
+                )
             elseif is_installed
                 set_string!(buf, status_x, y, "Installed ✓", tstyle(:success))
             elseif is_failed
@@ -126,18 +138,23 @@ function render_registry_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
         end
     end
 
-    # Action hints — show [t]riage when a failed package is selected
-    selected_is_failed =
-        !isempty(st.results) &&
-        st.selected >= 1 &&
-        st.selected <= length(st.results) &&
-        st.results[st.selected].name in st.failed_names
+    # Action hints — show contextual actions based on selected package state
+    selected_is_failed = false
+    selected_is_installed = false
+    if !isempty(st.results) && st.selected >= 1 && st.selected <= length(st.results)
+        sel_name = st.results[st.selected].name
+        selected_is_failed = sel_name in st.failed_names
+        selected_is_installed = sel_name in installed_set
+    end
 
     hint_spans = [
         Span("  [Enter] Install ", tstyle(:accent)),
         Span("[v]ersion ", tstyle(:accent)),
         Span("[/] Focus search ", tstyle(:text_dim)),
     ]
+    if selected_is_installed
+        push!(hint_spans, Span("[r]emove ", tstyle(:error)))
+    end
     if selected_is_failed
         push!(hint_spans, Span("[t]riage ", tstyle(:error)))
     end
@@ -290,6 +307,29 @@ function handle_registry_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                 push_log!(m, "Loading versions for $(pkg.name)...")
                 spawn_task!(m.tq, :fetch_versions) do
                     fetch_package_versions(pkg.name)
+                end
+            end
+            return true
+        elseif c == 'r'
+            # Remove an installed package
+            if !isempty(st.results) && st.selected >= 1 && st.selected <= length(st.results)
+                pkg = st.results[st.selected]
+                # Build set of installed package names
+                installed_set = Set{String}()
+                for p in m.installed.packages
+                    push!(installed_set, p.name)
+                end
+                union!(installed_set, st.installed_names)
+                if pkg.name in installed_set && st.removing_name === nothing
+                    m.modal = Modal(;
+                        title = "Remove Package",
+                        message = "Remove '$(pkg.name)' from the project?",
+                        confirm_label = "Remove",
+                        cancel_label = "Cancel",
+                        selected = :cancel,
+                    )
+                    m.modal_action = :remove
+                    m.modal_target = pkg.name
                 end
             end
             return true

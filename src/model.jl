@@ -141,6 +141,7 @@ end
     search_timer_active::Bool = false
     detail_panel_focused::Bool = false
     installing_name::Union{String,Nothing} = nothing  # name of package currently being installed
+    removing_name::Union{String,Nothing} = nothing      # name of package currently being removed
     installed_names::Set{String} = Set{String}()        # packages installed this session
     failed_names::Set{String} = Set{String}()            # packages that failed to install
     version_picker::VersionPickerState = VersionPickerState()
@@ -187,6 +188,7 @@ end
     pkg_output_expanded::Bool = false   # Pkg output collapsed by default
     h_offset::Int = 0                   # horizontal scroll offset
     _lines::Vector{Vector{Span}} = Vector{Span}[]  # stored lines for h-scroll render
+    _overlay_width::Int = 0              # last overlay width (triggers rebuild on resize)
 end
 
 """State for the full-screen Log tab."""
