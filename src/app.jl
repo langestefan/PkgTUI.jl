@@ -234,6 +234,10 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             "Environment: $(something(m.project_info.name, "unnamed")) " *
             "($(m.project_info.dep_count) deps)",
         )
+        if m.project_info.is_workspace
+            n = length(m.project_info.workspace_projects)
+            push_log!(m, "Workspace detected with $n sub-project$(n == 1 ? "" : "s")")
+        end
 
     elseif evt.id == :fetch_installed
         packages = evt.value::Vector{PackageRow}
@@ -653,7 +657,7 @@ Launch the PkgTUI terminal interface.
 - `project`: Path to a Julia project to activate. Defaults to the current active environment.
 - `fps`: Frames per second for the TUI render loop (default: 30).
 """
-function pkgtui(; project::Union{String,Nothing} = nothing, fps::Int = 30)
+function pkgtui(; project::Union{String,Nothing} = nothing, fps::Int = 5)
     if project !== nothing
         Pkg.activate(project)
     elseif haskey(ENV, "JULIA_LOAD_PATH")

@@ -74,6 +74,14 @@ end
     is_direct::Bool = false
 end
 
+"""Resolved workspace sub-project metadata."""
+@kwdef struct WorkspaceProject
+    name::String            # project name from its Project.toml (or dirname fallback)
+    rel_path::String        # relative path as listed in [workspace].projects
+    project_toml::String    # absolute path to the sub-project's Project.toml
+    is_active::Bool = false # whether this sub-project is the currently active env
+end
+
 """Information about the active project/environment."""
 @kwdef mutable struct ProjectInfo
     name::Union{String,Nothing} = nothing
@@ -83,7 +91,8 @@ end
     path::Union{String,Nothing} = nothing
     dep_count::Int = 0
     is_workspace::Bool = false
-    workspace_projects::Vector{String} = String[]
+    workspace_projects::Vector{WorkspaceProject} = WorkspaceProject[]
+    workspace_root::Union{String,Nothing} = nothing   # abs path to workspace root dir
 end
 
 # ── Graph layout for dependency visualization (removed force-directed) ────────

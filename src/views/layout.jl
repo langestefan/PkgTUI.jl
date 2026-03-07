@@ -59,7 +59,24 @@ function render_layout(m::PkgTUIApp, f::Frame)
         "unknown"
     end
 
-    ws_indicator = m.project_info.is_workspace ? " [ws]" : ""
+    # Build workspace indicator showing active sub-project context
+    ws_indicator = ""
+    if m.project_info.is_workspace
+        # Find which sub-project is active (if any)
+        active_sub = nothing
+        for wp in m.project_info.workspace_projects
+            if wp.is_active
+                active_sub = wp
+                break
+            end
+        end
+        if active_sub !== nothing
+            ws_indicator = " ▸ $(active_sub.name) [ws]"
+        else
+            ws_indicator = " [ws]"
+        end
+    end
+
     pkg_count = m.project_info.dep_count
 
     left_spans = [
@@ -229,11 +246,69 @@ end
 """
     render_env_switcher(m::PkgTUIApp, area::Rect, buf::Buffer)
 
-Render an environment switching overlay.
+Render an environment switching overlay with workspace sub-project grouping.
 """
 function render_env_switcher(m::PkgTUIApp, area::Rect, buf::Buffer)
-    h = min(length(m.env_list) + 4, area.height - 4)
-    w = min(60, area.width - 4)
+    # Build display entries: (label, is_header)
+    # Group workspace sub-projects under a header if applicable
+    ws_root = m.project_info.workspace_root
+    ws_tomls = Set{String}()
+    ws_labels = Dict{String,String}()   # project_toml → display label
+    if ws_root !== nothing
+        for wp in m.project_info.workspace_projects
+            npath = normpath(wp.project_toml)
+            push!(ws_tomls, npath)
+            ws_labels[npath] = wp.name * " (" * wp.rel_path * ")"
+        end
+        # The workspace root itself
+        root_toml = normpath(joinpath(ws_root, "Project.toml"))
+        push!(ws_tomls, root_toml)
+        root_name = something(m.project_info.name, basename(ws_root))
+        ws_labels[root_toml] = root_name * " (root)"
+    end
+
+    # Partition env_list into workspace entries & other entries
+    ws_entries = String[]
+    other_entries = String[]
+    for env in m.env_list
+        if normpath(env) in ws_tomls
+            push!(ws_entries, env)
+        else
+            push!(other_entries, env)
+        end
+    end
+
+    # Build display rows: each is (display_text, list_index_or_0, style_key)
+    display_rows = Tuple{String,Int,Symbol}[]
+    idx_map = Int[]   # maps selectable row index → env_list index
+
+    if !isempty(ws_entries)
+        ws_name = if ws_root !== nothing
+            something(m.project_info.name, basename(ws_root))
+        else
+            "Workspace"
+        end
+        push!(display_rows, ("─ Workspace: $ws_name ─", 0, :text_dim))
+        for env in ws_entries
+            ei = findfirst(==(env), m.env_list)
+            label = get(ws_labels, normpath(env), env)
+            push!(display_rows, ("  " * label, ei === nothing ? 0 : ei, :text))
+            ei !== nothing && push!(idx_map, ei)
+        end
+    end
+
+    if !isempty(other_entries)
+        !isempty(ws_entries) && push!(display_rows, ("", 0, :text))  # spacer
+        push!(display_rows, ("─ Environments ─", 0, :text_dim))
+        for env in other_entries
+            ei = findfirst(==(env), m.env_list)
+            push!(display_rows, ("  " * env, ei === nothing ? 0 : ei, :text))
+            ei !== nothing && push!(idx_map, ei)
+        end
+    end
+
+    h = min(length(display_rows) + 4, area.height - 4)
+    w = min(70, area.width - 4)
     env_rect = center(area, w, h)
 
     # Clear the background behind the overlay so underlying content doesn't bleed through
@@ -252,16 +327,17 @@ function render_env_switcher(m::PkgTUIApp, area::Rect, buf::Buffer)
         buf,
     )
 
-    for (i, env) in enumerate(m.env_list)
-        y = inner.y + i - 1
+    for (ri, (label, env_idx, skey)) in enumerate(display_rows)
+        y = inner.y + ri - 1
         y > inner.y + inner.height - 1 && break
-        display_name = env
+
+        display_name = label
         # Shorten long paths
         if length(display_name) > inner.width - 4
             display_name = "..." * display_name[end-inner.width+7:end]
         end
 
-        if i == m.env_selected
+        if env_idx != 0 && env_idx == m.env_selected
             set_string!(
                 buf,
                 inner.x + 1,
@@ -269,8 +345,11 @@ function render_env_switcher(m::PkgTUIApp, area::Rect, buf::Buffer)
                 "▶ " * display_name,
                 tstyle(:accent, bold = true),
             )
+        elseif env_idx == 0
+            # Header / spacer row — not selectable
+            set_string!(buf, inner.x + 1, y, display_name, tstyle(skey))
         else
-            set_string!(buf, inner.x + 1, y, "  " * display_name, tstyle(:text))
+            set_string!(buf, inner.x + 3, y, display_name, tstyle(:text))
         end
     end
 end

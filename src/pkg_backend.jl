@@ -18,6 +18,7 @@ using TOML
     fetch_project_info() → ProjectInfo
 
 Return information about the currently active project/environment.
+Detects workspaces both when the root is active and when a sub-project is active.
 """
 function fetch_project_info()::ProjectInfo
     proj = Pkg.project()
@@ -30,19 +31,16 @@ function fetch_project_info()::ProjectInfo
         dep_count = length(proj.dependencies),
     )
 
-    # Detect workspace
     if proj.path !== nothing
         project_dir = dirname(proj.path)
-        project_toml = proj.path
-        if isfile(project_toml)
-            toml = TOML.parsefile(project_toml)
-            if haskey(toml, "workspace")
-                info.is_workspace = true
-                ws = toml["workspace"]
-                if haskey(ws, "projects") && ws["projects"] isa Vector
-                    info.workspace_projects = string.(ws["projects"])
-                end
-            end
+
+        # Try the active project first
+        ws_root, ws_toml = _find_workspace_root(project_dir)
+
+        if ws_root !== nothing && ws_toml !== nothing
+            info.is_workspace = true
+            info.workspace_root = ws_root
+            info.workspace_projects = _resolve_workspace_projects(ws_root, ws_toml, proj.path)
         end
     end
 
@@ -50,9 +48,123 @@ function fetch_project_info()::ProjectInfo
 end
 
 """
+    _find_workspace_root(start_dir) → (root_dir, toml_dict) or (nothing, nothing)
+
+Walk up from `start_dir` looking for a Project.toml with a [workspace] section.
+Returns the directory and parsed TOML on success.
+"""
+function _find_workspace_root(start_dir::AbstractString)
+    dir = abspath(start_dir)
+    # Check current dir and up to 5 parent levels (sub-project detection)
+    for _ = 1:6
+        toml_path = joinpath(dir, "Project.toml")
+        if isfile(toml_path)
+            toml = TOML.parsefile(toml_path)
+            if haskey(toml, "workspace")
+                return (dir, toml)
+            end
+        end
+        parent = dirname(dir)
+        parent == dir && break   # reached filesystem root
+        dir = parent
+    end
+    return (nothing, nothing)
+end
+
+"""
+    _resolve_workspace_projects(ws_root, toml, active_path) → Vector{WorkspaceProject}
+
+Read the [workspace].projects list from a parsed TOML,
+resolve each to absolute paths, and read sub-project names.
+"""
+function _resolve_workspace_projects(
+    ws_root::AbstractString,
+    toml::Dict,
+    active_path::AbstractString,
+)::Vector{WorkspaceProject}
+    ws = toml["workspace"]
+    projects = WorkspaceProject[]
+    raw_list = get(ws, "projects", String[])
+    raw_list isa Vector || return projects
+
+    for rel in raw_list
+        rel_str = string(rel)
+        sub_dir = normpath(joinpath(ws_root, rel_str))
+        sub_toml = joinpath(sub_dir, "Project.toml")
+
+        # Derive a display name: read from Project.toml or fallback to dirname
+        sub_name = basename(sub_dir)
+        if isfile(sub_toml)
+            try
+                t = TOML.parsefile(sub_toml)
+                if haskey(t, "name")
+                    sub_name = t["name"]
+                end
+            catch
+                # ignore parse errors
+            end
+        else
+            continue   # skip entries that don't exist on disk
+        end
+
+        push!(
+            projects,
+            WorkspaceProject(
+                name = sub_name,
+                rel_path = rel_str,
+                project_toml = sub_toml,
+                is_active = normpath(sub_toml) == normpath(active_path),
+            ),
+        )
+    end
+
+    return projects
+end
+
+"""
+    _mirror_workspace!(tmpdir, ws_root, ws_toml, active_proj_dir)
+
+Replicate enough of the workspace file structure into `tmpdir`
+so that `Pkg.update` inside the temporary copy can resolve
+sibling sub-project compat constraints correctly.
+
+Copies: root Project.toml, root Manifest.toml (if any),
+and each sub-project's Project.toml (+ Manifest.toml if present).
+"""
+function _mirror_workspace!(
+    tmpdir::AbstractString,
+    ws_root::AbstractString,
+    ws_toml::Dict,
+    active_proj_dir::AbstractString,
+)
+    # Copy workspace root Project.toml
+    root_proj = joinpath(ws_root, "Project.toml")
+    isfile(root_proj) && cp(root_proj, joinpath(tmpdir, "Project.toml"))
+
+    # Copy workspace root Manifest.toml if present
+    root_man = joinpath(ws_root, "Manifest.toml")
+    isfile(root_man) && cp(root_man, joinpath(tmpdir, "Manifest.toml"))
+
+    # Copy each sub-project's Project.toml and Manifest.toml
+    raw_list = get(get(ws_toml, "workspace", Dict()), "projects", String[])
+    raw_list isa Vector || return
+    for rel in raw_list
+        rel_str = string(rel)
+        src_dir = normpath(joinpath(ws_root, rel_str))
+        dst_dir = joinpath(tmpdir, rel_str)
+        mkpath(dst_dir)
+        for fname in ("Project.toml", "Manifest.toml")
+            src = joinpath(src_dir, fname)
+            isfile(src) && cp(src, joinpath(dst_dir, fname))
+        end
+    end
+end
+
+"""
     fetch_environment_list() → Vector{String}
 
-Return a list of known environment paths (load path + workspace projects).
+Return a list of known environment paths (load path + workspace sub-projects).
+Workspace sub-projects are prefixed with `[ws] ` for display grouping.
 """
 function fetch_environment_list()::Vector{String}
     envs = String[]
@@ -71,6 +183,24 @@ function fetch_environment_list()::Vector{String}
     proj = Pkg.project()
     if proj.path !== nothing
         push!(envs, proj.path)
+    end
+
+    # Workspace sub-projects: resolve from the workspace root
+    if proj.path !== nothing
+        ws_root, ws_toml = _find_workspace_root(dirname(proj.path))
+        if ws_root !== nothing && ws_toml !== nothing
+            ws = ws_toml["workspace"]
+            raw_list = get(ws, "projects", String[])
+            if raw_list isa Vector
+                # Also include the workspace root itself
+                root_toml = joinpath(ws_root, "Project.toml")
+                push!(envs, root_toml)
+                for rel in raw_list
+                    sub_toml = normpath(joinpath(ws_root, string(rel), "Project.toml"))
+                    isfile(sub_toml) && push!(envs, sub_toml)
+                end
+            end
+        end
     end
 
     return unique(envs)
@@ -300,6 +430,9 @@ function dry_run_update(io::IOBuffer)::DryRunDiff
         return DryRunDiff(error = "No Project.toml found")
     end
 
+    # Detect workspace root — needed to replicate sibling sub-projects
+    ws_root, ws_toml = _find_workspace_root(proj_dir)
+
     # Parse the old manifest for version comparison
     old_versions = Dict{String,String}()
     if isfile(manifest_file)
@@ -320,14 +453,24 @@ function dry_run_update(io::IOBuffer)::DryRunDiff
     entries = DryRunEntry[]
     try
         mktempdir() do tmpdir
-            # Copy project and manifest files
-            cp(project_file, joinpath(tmpdir, "Project.toml"))
-            if isfile(manifest_file)
-                cp(manifest_file, joinpath(tmpdir, "Manifest.toml"))
+            if ws_root !== nothing && ws_toml !== nothing
+                # Workspace mode: mirror the workspace structure so Pkg can
+                # resolve sibling sub-project compat constraints properly.
+                _mirror_workspace!(tmpdir, ws_root, ws_toml, proj_dir)
+                # Activate the sub-dir corresponding to the original project
+                rel = relpath(proj_dir, ws_root)
+                activate_dir = joinpath(tmpdir, rel)
+            else
+                # Non-workspace: just copy project & manifest
+                cp(project_file, joinpath(tmpdir, "Project.toml"))
+                if isfile(manifest_file)
+                    cp(manifest_file, joinpath(tmpdir, "Manifest.toml"))
+                end
+                activate_dir = tmpdir
             end
 
             # Activate temp env, resolve & update
-            Pkg.activate(tmpdir; io = io)
+            Pkg.activate(activate_dir; io = io)
             try
                 Pkg.update(; io = io)
 

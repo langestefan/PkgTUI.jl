@@ -16,7 +16,7 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 [compat]
 Match = "2"
 Tachikoma = "1"
-julia = "1.10"
+julia = "1.12"
 
 [apps.pkgtui]
 julia_flags = ["--threads=auto"]
