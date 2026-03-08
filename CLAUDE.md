@@ -9,11 +9,13 @@ PkgTUI.jl is a Terminal User Interface (TUI) for Julia package management, built
 ## Commands
 
 **Run tests:**
+
 ```bash
 julia --project=test test/runtests.jl
 ```
 
 **Run a single test item** (using TestItems.jl):
+
 ```julia
 # In Julia REPL with TestItemRunner loaded:
 using TestItemRunner
@@ -21,16 +23,19 @@ using TestItemRunner
 ```
 
 **Format code** (must match `.JuliaFormatter.toml`: 4-space indent, 92-char margin):
+
 ```bash
 julia -e 'using JuliaFormatter; format(".")'
 ```
 
-**Run pre-commit hooks:**
+**Run prek hooks** (run before every commit to format and validate):
+
 ```bash
-pre-commit run --all-files
+prek run -a
 ```
 
 **Install as Pkg App:**
+
 ```bash
 julia -e 'using Pkg; Pkg.add("PkgTUI"); Pkg.build("PkgTUI")'
 ```
