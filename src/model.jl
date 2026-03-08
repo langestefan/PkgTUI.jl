@@ -263,6 +263,9 @@ end
     show_log::Bool = true
     status_message::String = ""
     status_style::Symbol = :text
+
+    # ── File watcher ──
+    watcher_active::Ref{Bool} = Ref(false)
 end
 
 Tachikoma.should_quit(m::PkgTUIApp) = m.quit
