@@ -40,6 +40,9 @@ function Tachikoma.init!(m::PkgTUIApp, terminal::Tachikoma.Terminal)
     # Auto-refresh timer: check for updates every 5 minutes
     spawn_timer!(m.tq, :auto_refresh, 300.0; repeat = true)
 
+    # Poll Manifest.toml mtime every 3s to detect external changes
+    spawn_timer!(m.tq, :check_manifest, 3.0; repeat = true)
+
     push_log!(m, "Loading environment data...")
 end
 
@@ -451,9 +454,13 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             set_status!(m, "Profiling complete", :success)
         end
 
+    elseif evt.id == :check_manifest
+        _check_manifest_mtime!(m)
+
     elseif evt.id == :switch_env
         push_log!(m, "Environment switched.")
         set_status!(m, "Environment switched", :success)
+        m.last_manifest_mtime = 0.0
         refresh_all!(m)
 
     elseif evt.id == :fetch_env_list
@@ -618,6 +625,30 @@ function handle_task_error!(m::PkgTUIApp, id::Symbol, err::Exception)
     elseif id == :update_all
         m.updates_state.update_all_running = false
         empty!(m.updates_state.updating_names)
+    end
+end
+
+"""
+    _check_manifest_mtime!(m::PkgTUIApp)
+
+Compare the current Manifest.toml mtime against the last-seen value. Triggers
+a full refresh when the file was modified outside of PkgTUI.
+"""
+function _check_manifest_mtime!(m::PkgTUIApp)
+    m.installed.loading && return
+    proj_path = Pkg.project().path
+    proj_path === nothing && return
+    manifest_path = joinpath(dirname(proj_path), "Manifest.toml")
+    isfile(manifest_path) || return
+
+    mtime = stat(manifest_path).mtime
+    if m.last_manifest_mtime == 0.0
+        m.last_manifest_mtime = mtime
+    elseif mtime != m.last_manifest_mtime
+        m.last_manifest_mtime = mtime
+        push_log!(m, "External change detected — refreshing...")
+        set_status!(m, "External change detected", :accent)
+        refresh_all!(m)
     end
 end
 

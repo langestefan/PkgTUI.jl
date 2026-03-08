@@ -263,6 +263,9 @@ end
     show_log::Bool = true
     status_message::String = ""
     status_style::Symbol = :text
+
+    # ── Manifest change detection ──
+    last_manifest_mtime::Float64 = 0.0
 end
 
 Tachikoma.should_quit(m::PkgTUIApp) = m.quit
