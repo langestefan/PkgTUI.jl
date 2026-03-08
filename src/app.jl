@@ -40,14 +40,14 @@ function Tachikoma.init!(m::PkgTUIApp, terminal::Tachikoma.Terminal)
     # Auto-refresh timer: check for updates every 5 minutes
     spawn_timer!(m.tq, :auto_refresh, 300.0; repeat = true)
 
-    # Watch Manifest.toml for external changes (e.g. from another terminal)
-    start_manifest_watcher!(m)
+    # Poll Manifest.toml mtime every 3s to detect external changes
+    spawn_timer!(m.tq, :check_manifest, 3.0; repeat = true)
 
     push_log!(m, "Loading environment data...")
 end
 
 function Tachikoma.cleanup!(m::PkgTUIApp)
-    m.watcher_active[] = false
+    # Nothing to clean up currently
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -454,19 +454,14 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
             set_status!(m, "Profiling complete", :success)
         end
 
-    elseif evt.id == :manifest_changed
-        if !m.installed.loading
-            push_log!(m, "External change detected — refreshing...")
-            set_status!(m, "External change detected", :accent)
-            refresh_all!(m)
-        end
+    elseif evt.id == :check_manifest
+        _check_manifest_mtime!(m)
 
     elseif evt.id == :switch_env
         push_log!(m, "Environment switched.")
         set_status!(m, "Environment switched", :success)
+        m.last_manifest_mtime = 0.0
         refresh_all!(m)
-        m.watcher_active[] = false
-        start_manifest_watcher!(m)
 
     elseif evt.id == :fetch_env_list
         m.env_list = evt.value::Vector{String}
@@ -634,30 +629,26 @@ function handle_task_error!(m::PkgTUIApp, id::Symbol, err::Exception)
 end
 
 """
-    start_manifest_watcher!(m::PkgTUIApp)
+    _check_manifest_mtime!(m::PkgTUIApp)
 
-Watch the active environment's Manifest.toml for external changes and trigger
-a refresh when it is modified outside of PkgTUI. Runs on a dedicated thread
-so it is not blocked by Tachikoma's event loop.
+Compare the current Manifest.toml mtime against the last-seen value. Triggers
+a full refresh when the file was modified outside of PkgTUI.
 """
-function start_manifest_watcher!(m::PkgTUIApp)
+function _check_manifest_mtime!(m::PkgTUIApp)
+    m.installed.loading && return
     proj_path = Pkg.project().path
     proj_path === nothing && return
     manifest_path = joinpath(dirname(proj_path), "Manifest.toml")
     isfile(manifest_path) || return
 
-    m.watcher_active[] = true
-    Threads.@spawn while m.watcher_active[]
-        try
-            fe = FileWatching.watch_file(manifest_path, 5.0)
-            if (fe.changed || fe.renamed) && !m.installed.loading
-                spawn_task!(m.tq, :manifest_changed) do
-                    nothing
-                end
-            end
-        catch
-            break
-        end
+    mtime = stat(manifest_path).mtime
+    if m.last_manifest_mtime == 0.0
+        m.last_manifest_mtime = mtime
+    elseif mtime != m.last_manifest_mtime
+        m.last_manifest_mtime = mtime
+        push_log!(m, "External change detected — refreshing...")
+        set_status!(m, "External change detected", :accent)
+        refresh_all!(m)
     end
 end
 

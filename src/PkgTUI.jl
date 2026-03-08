@@ -3,7 +3,6 @@ module PkgTUI
 using Tachikoma
 @tachikoma_app
 import Pkg
-using FileWatching
 using TOML
 using UUIDs
 

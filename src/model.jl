@@ -264,8 +264,8 @@ end
     status_message::String = ""
     status_style::Symbol = :text
 
-    # ── File watcher ──
-    watcher_active::Ref{Bool} = Ref(false)
+    # ── Manifest change detection ──
+    last_manifest_mtime::Float64 = 0.0
 end
 
 Tachikoma.should_quit(m::PkgTUIApp) = m.quit
