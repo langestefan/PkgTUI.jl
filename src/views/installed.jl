@@ -117,6 +117,7 @@ function render_installed_tab(m::PkgTUIApp, area::Rect, buf::Buffer)
                     Span("[U]pdate all ", tstyle(:accent)),
                     Span("[p]in ", tstyle(:text_dim)),
                     Span("[f]ree ", tstyle(:text_dim)),
+                    Span("[c]ompat ", tstyle(:text_dim)),
                 ],
                 right = [
                     Span("[/]filter ", tstyle(:text_dim)),
@@ -379,6 +380,29 @@ function handle_installed_keys!(m::PkgTUIApp, evt::KeyEvent)::Bool
                     io = IOBuffer()
                     result = free_package(pkg.name, io)
                     (result = result, log = String(take!(io)))
+                end
+            end
+            return true
+        elseif c == 'c'
+            pkg = selected_package(st)
+            if pkg !== nothing
+                cp = m.compat_picker
+                cp.package_name = pkg.name
+                cp.current_compat = get_compat_for(pkg.name)
+                cp.input = TextInput(;
+                    label = " Compat: ",
+                    text = cp.current_compat,
+                    focused = true,
+                )
+                cp.versions = String[]
+                cp.matching = String[]
+                cp.parse_error = false
+                cp.loading = true
+                cp.scroll_offset = 0
+                cp.show = true
+                push_log!(m, "Loading versions for $(pkg.name)...")
+                spawn_task!(m.tq, :fetch_versions_compat) do
+                    fetch_package_versions(pkg.name)
                 end
             end
             return true

@@ -129,6 +129,19 @@ end
     update_all_running::Bool = false               # true while "Update all" is in progress
 end
 
+"""State for the compat range picker overlay (Installed tab)."""
+@kwdef mutable struct CompatPickerState
+    show::Bool = false
+    package_name::String = ""
+    current_compat::String = ""
+    input::TextInput = TextInput(; label = " Compat: ", focused = true)
+    versions::Vector{String} = String[]
+    matching::Vector{String} = String[]
+    parse_error::Bool = false
+    loading::Bool = false
+    scroll_offset::Int = 0
+end
+
 """State for the version picker overlay in the Registry tab."""
 @kwdef mutable struct VersionPickerState
     show::Bool = false
@@ -263,6 +276,9 @@ end
     show_log::Bool = true
     status_message::String = ""
     status_style::Symbol = :text
+
+    # ── Compat picker overlay ──
+    compat_picker::CompatPickerState = CompatPickerState()
 
     # ── Manifest change detection ──
     last_manifest_mtime::Float64 = 0.0

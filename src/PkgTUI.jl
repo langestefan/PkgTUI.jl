@@ -18,6 +18,7 @@ include("registry.jl")
 # Views
 include("views/layout.jl")
 include("views/installed.jl")
+include("views/compat_picker.jl")
 include("views/updates.jl")
 include("views/registry_explorer.jl")
 include("views/dependencies.jl")
