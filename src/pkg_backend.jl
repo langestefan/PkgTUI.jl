@@ -241,6 +241,47 @@ function fetch_installed(io::IOBuffer)::Vector{PackageRow}
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Compat
+# ──────────────────────────────────────────────────────────────────────────────
+
+"""
+    get_compat_for(pkg_name) → String
+
+Return the current compat entry for `pkg_name` from Project.toml, or `""` if none.
+"""
+function get_compat_for(pkg_name::String)::String
+    proj_path = Pkg.project().path
+    proj_path === nothing && return ""
+    project = TOML.parsefile(proj_path)
+    return get(get(project, "compat", Dict()), pkg_name, "")
+end
+
+"""
+    set_compat(pkg_name, compat_spec, io) → String
+
+Write a compat entry for `pkg_name` to the active Project.toml.
+If `compat_spec` is empty the entry is removed.
+"""
+function set_compat(pkg_name::String, compat_spec::String, io::IOBuffer)::String
+    proj_path = Pkg.project().path
+    proj_path === nothing && return "Error: no active project"
+    project = TOML.parsefile(proj_path)
+    compat = get!(project, "compat", Dict{String,Any}())
+    spec = strip(compat_spec)
+    if isempty(spec)
+        delete!(compat, pkg_name)
+        msg = "Removed compat entry for '$pkg_name'."
+    else
+        compat[pkg_name] = String(spec)
+        msg = "Set compat: $pkg_name = \"$spec\""
+    end
+    open(proj_path, "w") do f
+        TOML.print(f, project)
+    end
+    return msg
+end
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Add / Remove / Update
 # ──────────────────────────────────────────────────────────────────────────────
 

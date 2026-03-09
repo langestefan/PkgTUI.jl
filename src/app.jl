@@ -91,6 +91,10 @@ function Tachikoma.view(m::PkgTUIApp, f::Frame)
         render_version_picker(m, f.area, f.buffer)
     end
 
+    if m.compat_picker.show
+        render_compat_picker(m, f.area, f.buffer)
+    end
+
     # Toast notifications (topmost layer)
     render_toasts(m, f.area, f.buffer)
 end
@@ -129,6 +133,12 @@ function Tachikoma.update!(m::PkgTUIApp, evt::KeyEvent)
     # ── Modal handling ──
     if m.modal !== nothing
         handle_modal_keys!(m, evt)
+        return
+    end
+
+    # ── Compat picker overlay ──
+    if m.compat_picker.show
+        handle_compat_picker_keys!(m, evt)
         return
     end
 
@@ -272,6 +282,26 @@ function Tachikoma.update!(m::PkgTUIApp, evt::TaskEvent)
         else
             push_log!(m, "Found $(length(versions)) versions for $(vp.package_name).")
         end
+
+    elseif evt.id == :fetch_versions_compat
+        versions = evt.value::Vector{String}
+        cp = m.compat_picker
+        cp.versions = versions
+        cp.loading = false
+        if isempty(versions)
+            push_log!(m, "No versions found for $(cp.package_name).")
+            cp.show = false
+        else
+            _update_compat_matching!(cp)
+            push_log!(m, "Found $(length(versions)) versions for $(cp.package_name).")
+        end
+
+    elseif evt.id == :set_compat
+        result = evt.value
+        msg = result isa NamedTuple ? result.result : string(result)
+        push_log!(m, msg)
+        set_status!(m, msg, :success)
+        refresh_all!(m)
 
     elseif evt.id == :add
         result = evt.value
