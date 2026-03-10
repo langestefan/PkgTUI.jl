@@ -25,7 +25,7 @@ Pkg.Apps.add(url="https://github.com/langestefan/PkgTUI.jl")
 Or with a single command:
 
 ```bash
-julia --project -e 'using Pkg; Pkg.Apps.add(url="https://github.com/langestefan/PkgTUI.jl")'
+julia -e 'using Pkg; Pkg.Apps.add(url="https://github.com/langestefan/PkgTUI.jl")'
 ```
 
 Then invoke with:
