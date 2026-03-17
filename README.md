@@ -13,6 +13,10 @@ PkgTUI brings a full-featured terminal interface to [Pkg.jl](https://pkgdocs.jul
 > `PkgTUI.jl` is in a very experimental stage! **Use at your own risk.**
 > Please report any issues you encounter, and feel free to contribute!
 
+> [!WARNING]
+> `PkgTUI.jl` was produced with significant LLM (claude) assistance, almost entirely without human oversight.
+> It will therefore not be submitted to the general registry and is not recommended for production usage.
+
 ## Installation
 
 PkgTUI is a [Pkg App](https://pkgdocs.julialang.org/dev/apps/). Install once, use from any terminal:
